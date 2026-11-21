@@ -28,6 +28,9 @@ namespace GpuS
         public static readonly Font Semi = new Font("Segoe UI Semibold", Base.Size);
         public static readonly Font Title = new Font("Segoe UI Semibold", Base.Size * 1.65f);
         public static readonly Font Big = new Font("Segoe UI Semibold", Base.Size * 1.85f);
+        public static readonly Font Mid = new Font("Segoe UI Semibold", Base.Size * 1.5f);
+        public static readonly Color CpuColor = Color.FromArgb(0x11, 0x7D, 0xBB);   // Task Manager-like blue
+        public static readonly Color RamColor = Color.FromArgb(0x8B, 0x3F, 0xC9);   // Task Manager-like purple
         public static readonly Font Mono = new Font("Consolas", Base.Size);
 
         public static Color VendorColor(uint vendorId)
@@ -354,6 +357,7 @@ namespace GpuS
     internal sealed class MonitorView : Control
     {
         public SensorSet Sensors;
+        public SensorSet System;                     // CPU / system RAM
         public GpuDevice Gpu;
         public List<GpuDevice> AllGpus;              // non-null = "All GPUs" overview
         public Func<GpuDevice, SensorSet> SetFor;
@@ -385,13 +389,14 @@ namespace GpuS
             Sensor load = Find("GPU Load"), mem = Find(Gpu.MemorySensorName), temp = Find("GPU Temperature");
 
             // Stats grid at the bottom (2 rows x 3 columns).
-            int cellH = Theme.Small.Height + Theme.Big.Height + 2;
+            int cellH = Theme.Small.Height + Theme.Mid.Height + 4;
             int statsH = cellH * 2 + pad;
             var stats = new Rectangle(pad, Height - pad - statsH, Width - pad * 2, statsH);
 
             // Graphs: GPU (largest), memory, temperature.
             var area = new Rectangle(pad, pad, Width - pad * 2, stats.Y - pad * 2);
-            int h1 = area.Height * 42 / 100, h2 = area.Height * 34 / 100, h3 = area.Height - h1 - h2;
+            // Layout: GPU utilization (largest) / GPU memory / [temperature | CPU | system RAM] / stats.
+            int h1 = area.Height * 37 / 100, h2 = area.Height * 31 / 100, h3 = area.Height - h1 - h2;
             string span = SpanText;
 
             // GPU utilization (+ throttle badge). NVML utilization includes CUDA (Task Manager's default view does not).
@@ -448,20 +453,36 @@ namespace GpuS
                 total > 0 ? string.Format("{0:N0} MB", total) : "", span, mem, 0, null, memColor);
 
             string tNow = temp != null && temp.Count > 0 ? temp.Value.ToString("0") + " °C" : "";
-            DrawPanel(g, new Rectangle(area.X, area.Y + h1 + h2, area.Width, h3), Lang.L("Temperature"), tNow, Theme.Muted, "100 °C", span, temp, 100,
+            // Bottom row: three equal panels.
+            Sensor cpu = System == null ? null : System.Find("CPU Usage");
+            Sensor ram = System == null ? null : System.Find("RAM Used");
+            int gap = pad, w3 = (area.Width - gap * 2) / 3, y3 = area.Y + h1 + h2;
+            DrawPanel(g, new Rectangle(area.X, y3, w3, h3), Lang.L("Temperature"), tNow, Theme.Muted, "100 °C", span, temp, 100,
                 temp == null ? Lang.L("Not available (NVIDIA only)") : null, Theme.Accent);
+            string cpuNow = cpu != null && cpu.Count > 0 ? cpu.Value.ToString("0") + "%" : "";
+            DrawPanel(g, new Rectangle(area.X + w3 + gap, y3, w3, h3), "CPU", cpuNow, Theme.Muted, "100%", span, cpu, 100, null, Theme.CpuColor);
+            string ramNow = "", ramText = "–";
+            if (ram != null && ram.Count > 0 && ram.FixedMax > 0)
+            {
+                ramNow = string.Format("{0:0.0} GB", ram.Value / 1024);
+                ramText = string.Format("{0:0.0} / {1:0} GB", ram.Value / 1024, ram.FixedMax / 1024);
+            }
+            DrawPanel(g, new Rectangle(area.X + (w3 + gap) * 2, y3, area.Width - (w3 + gap) * 2, h3), Lang.L("System RAM"), ramNow, Theme.Muted,
+                ram != null && ram.FixedMax > 0 ? string.Format("{0:0} GB", ram.FixedMax / 1024) : "", span, ram, 0, null, Theme.RamColor);
 
-            string[] labels = { "Utilization", "Memory", "Temperature", "GPU clock", "Power", "Fan" };
+            // Stats: 4 columns x 2 rows (GPU first row, system second row).
+            string[] labels = { "Utilization", "GPU memory", "Temperature", "Power", "CPU", "System RAM", "GPU clock", "Fan" };
             string[] values =
             {
-                Val(load), memText, Val(temp), Val(Find("GPU Clock")), Val(Find("Board Power Draw")), Val(Find("Fan Speed")),
+                Val(load), memText, Val(temp), Val(Find("Board Power Draw")),
+                cpu != null && cpu.Count > 0 ? cpu.Value.ToString("0") + " %" : "–", ramText, Val(Find("GPU Clock")), Val(Find("Fan Speed")),
             };
-            int colW = stats.Width / 3;
-            for (int i = 0; i < 6; i++)
+            int colW = stats.Width / 4;
+            for (int i = 0; i < 8; i++)
             {
-                int x = stats.X + (i % 3) * colW, y = stats.Y + pad + (i / 3) * cellH;
+                int x = stats.X + (i % 4) * colW, y = stats.Y + pad + (i / 4) * cellH;
                 Theme.Draw(g, Lang.L(labels[i]), Theme.Small, new Rectangle(x, y, colW - 6, Theme.Small.Height), Theme.Muted, TextFormatFlags.Left);
-                Theme.Draw(g, values[i], Theme.Big, new Rectangle(x, y + Theme.Small.Height, colW - 6, Theme.Big.Height), Theme.Text, TextFormatFlags.Left);
+                Theme.Draw(g, values[i], Theme.Mid, new Rectangle(x, y + Theme.Small.Height + 1, colW - 6, Theme.Mid.Height), Theme.Text, TextFormatFlags.Left);
             }
         }
 

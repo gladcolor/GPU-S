@@ -82,7 +82,9 @@ namespace GpuS
     internal sealed class MiniView : Control
     {
         public SensorSet Sensors;
+        public SensorSet System;
         public string MemorySensor = "Memory Used";
+        public const int Rows = 5;
 
         public MiniView()
         {
@@ -115,6 +117,11 @@ namespace GpuS
             Row(g, 0, "GPU", load == null || load.Count == 0 ? "–" : load.Value.ToString("0") + " %", Theme.Text, load);
             Row(g, 1, "MEM", memText, memColor, mem);
             Row(g, 2, "TEMP", temp == null || temp.Count == 0 ? "–" : temp.Value.ToString("0") + " °C", warn != null ? Theme.Danger : Theme.Text, temp);
+            Sensor cpu = System == null ? null : System.Find("CPU Usage");
+            Sensor ram = System == null ? null : System.Find("RAM Used");
+            Row(g, 3, "CPU", cpu == null || cpu.Count == 0 ? "–" : cpu.Value.ToString("0") + " %", Theme.Text, cpu);
+            Row(g, 4, "RAM", ram == null || ram.Count == 0 || ram.FixedMax <= 0 ? "–"
+                : string.Format("{0:0}/{1:0} GB", ram.Value / 1024, ram.FixedMax / 1024), Theme.Text, ram);
         }
 
         private void Row(Graphics g, int i, string label, string value, Color valueColor, Sensor s)

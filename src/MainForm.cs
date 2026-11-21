@@ -12,7 +12,7 @@ namespace GpuS
     internal sealed class MainForm : Form
     {
         public const string AppName = "GPU-S";
-        public const string AppVersion = "1.2";
+        public const string AppVersion = "1.3";
         public const string Author = "Ning, Huan (宁欢)";
         public const string AuthorEmail = "gladcolor@gmail.com";
         public static readonly Icon AppIcon = MakeIcon();
@@ -150,7 +150,7 @@ namespace GpuS
                 OnTick(this, EventArgs.Empty);
             };
             rangeBar.Controls.Add(allPill);
-            monitor = new MonitorView { Dock = DockStyle.Fill, SetFor = hub.For };
+            monitor = new MonitorView { Dock = DockStyle.Fill, SetFor = hub.For, System = hub.System };
             monitorPage.Controls.Add(monitor);
             monitorPage.Controls.Add(rangeBar);
 
@@ -621,6 +621,7 @@ namespace GpuS
             GpuDevice g = Selected;
             var m = new MiniForm();
             m.View.Sensors = g == null ? null : hub.For(g);
+            m.View.System = hub.System;
             if (g != null) m.View.MemorySensor = g.MemorySensorName;
             if (Settings.OnScreen(settings.MiniBounds)) m.Bounds = settings.MiniBounds;
             else

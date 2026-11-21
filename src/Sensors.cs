@@ -5,6 +5,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace GpuS
@@ -79,6 +80,7 @@ namespace GpuS
             get
             {
                 if (!HasThrottle) return null;
+                if ((ThrottleRaw & 0x1) != 0) return null; // GPU idle: other bits are not a real slowdown
                 if ((ThrottleRaw & 0x60) != 0) return "Thermal throttling";
                 if ((ThrottleRaw & 0x08) != 0) return "HW slowdown";
                 if ((ThrottleRaw & 0x84) != 0) return "Power limit";
@@ -118,10 +120,16 @@ namespace GpuS
         public readonly DateTime Start = DateTime.Now;
         public long Samples, UtilN, PowerN, ThrottleKnown, PowerThrottled, ThermalThrottled, SpillSamples;
         public double UtilSum, UtilMax, MemPeak, MemTotal, SharedPeak, TempMax = double.NaN, PowerSum, PowerMax;
+        public long CpuN;
+        public double CpuSum, CpuMax, RamPeak, RamTotal;
 
-        public void Add(SensorSet s, GpuDevice g)
+        public void Add(SensorSet s, GpuDevice g, SensorSet sys)
         {
             Samples++;
+            Sensor c = sys == null ? null : sys.Find("CPU Usage");
+            if (c != null && c.Count > 0) { CpuSum += c.Value; CpuN++; CpuMax = Math.Max(CpuMax, c.Value); }
+            c = sys == null ? null : sys.Find("RAM Used");
+            if (c != null && c.Count > 0) { RamPeak = Math.Max(RamPeak, c.Value); RamTotal = c.FixedMax; }
             Sensor x = s.Find("GPU Load");
             if (x != null && x.Count > 0) { UtilSum += x.Value; UtilN++; UtilMax = Math.Max(UtilMax, x.Value); }
             x = s.Find(g.MemorySensorName);
@@ -132,7 +140,7 @@ namespace GpuS
             if (x != null && x.Count > 0) TempMax = double.IsNaN(TempMax) ? x.Value : Math.Max(TempMax, x.Value);
             x = s.Find("Board Power Draw");
             if (x != null && x.Count > 0) { PowerSum += x.Value; PowerN++; PowerMax = Math.Max(PowerMax, x.Value); }
-            if (s.HasThrottle)
+            if (s.HasThrottle && (s.ThrottleRaw & 0x1) == 0) // ignore idle samples
             {
                 ThrottleKnown++;
                 if ((s.ThrottleRaw & 0x84) != 0) PowerThrottled++;
@@ -176,6 +184,8 @@ namespace GpuS
                     100.0 * PowerThrottled / ThrottleKnown, 100.0 * ThermalThrottled / ThrottleKnown));
             if (g.DedicatedVideoMemory >= (2UL << 30))
                 Row(sb, "Spilled into system RAM", string.Format(Inv, "{0:0.0} % of the time", Samples > 0 ? 100.0 * SpillSamples / Samples : 0));
+            if (CpuN > 0) Row(sb, "CPU utilization", string.Format(Inv, "avg {0:0.0} %, max {1:0} %", CpuSum / CpuN, CpuMax));
+            if (RamTotal > 0) Row(sb, "Peak system RAM", string.Format(Inv, "{0:N0} / {1:N0} MiB ({2:0.0} %)", RamPeak, RamTotal, 100 * RamPeak / RamTotal));
             string drv = g.NvDriverVersion ?? g.DriverVersion ?? "n/a";
             Row(sb, "Driver", g.CudaVersion != null ? drv + ", CUDA " + g.CudaVersion : drv);
             sb.AppendLine();
@@ -199,11 +209,39 @@ namespace GpuS
 
         public void Sample(GpuDevice g)
         {
+            SampleSystem();
             SensorSet s = For(g);
             if (g.HasNvml) { SampleNvml(g.Nvml, s); SampleShared(g, s); }
             else SamplePdh(g, s);
             UpdateSpill(g, s);
-            s.Run.Add(s, g);
+            s.Run.Add(s, g, System);
+        }
+
+        // ------------------------------------------------------------ CPU / system RAM
+
+        public readonly SensorSet System = new SensorSet();
+        private long lastIdle, lastKernel, lastUser;
+        private DateTime lastSystem = DateTime.MinValue;
+
+        public void SampleSystem()
+        {
+            if ((DateTime.UtcNow - lastSystem).TotalMilliseconds < 250) return; // once per tick, even in All-GPUs mode
+            lastSystem = DateTime.UtcNow;
+            long idle, kernel, user;
+            if (Kernel32.GetSystemTimes(out idle, out kernel, out user))
+            {
+                if (lastKernel != 0)
+                {
+                    long total = (kernel - lastKernel) + (user - lastUser); // kernel time includes idle time
+                    long idleD = idle - lastIdle;
+                    if (total > 0) System.Get("CPU Usage", "%", "0", 100).Push(Math.Max(0, Math.Min(100, 100.0 * (total - idleD) / total)));
+                }
+                lastIdle = idle; lastKernel = kernel; lastUser = user;
+            }
+            var m = new Kernel32.MEMORYSTATUSEX();
+            m.dwLength = (uint)Marshal.SizeOf(typeof(Kernel32.MEMORYSTATUSEX));
+            if (Kernel32.GlobalMemoryStatusEx(ref m) && m.ullTotalPhys > 0)
+                System.Get("RAM Used", "MB", "N0", m.ullTotalPhys / 1048576.0).Push((m.ullTotalPhys - m.ullAvailPhys) / 1048576.0);
         }
 
         // NVIDIA: one tiny counter (a few instances) for shared GPU memory, used to detect sysmem fallback.

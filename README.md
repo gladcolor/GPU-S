@@ -16,11 +16,12 @@ Common problems when training models on Windows, and how GPU-S handles them:
 | Training suddenly gets **10x slower** when VRAM fills up and the driver quietly spills into system RAM ("Sysmem Fallback") | A **spill warning** on the graph and a pop-up alert that suggests the fix |
 | GPU-Z, HWiNFO and similar tools **need admin rights** or an installer, which is often impossible on work and university PCs | A single exe that runs as a standard user |
 | Long runs slow down because of **power or thermal throttling** | A live throttle badge, plus "time throttled" in the run summary |
-| You need numbers for a paper or for tuning a job | **Run summary** in Markdown: peak memory, average and maximum utilization, maximum temperature, power and throttling |
+| Is training slow because of the GPU or the data loader? | CPU and system RAM graphs next to the GPU, as in Task Manager |
+| You need numbers for a paper or for tuning a job | **Run summary** in Markdown: peak GPU memory, average and maximum utilization, maximum temperature, power, throttling, CPU and peak RAM |
 
 ## Features
 
-- **Monitor:** Task Manager-style graphs of GPU utilization, GPU memory (exact MB used and free; turns orange at 90% and red at 95%) and temperature. Ranges of 1 minute, 10 minutes or 1 hour. The **All GPUs** view puts every GPU side by side.
+- **Monitor:** Task Manager-style graphs of GPU utilization, GPU memory (exact MB used and free; turns orange at 90% and red at 95%), temperature, **CPU** and **system RAM**. CPU and RAM help you tell whether a slow run is GPU-bound or data-loader-bound. Ranges of 1 minute, 10 minutes or 1 hour. The **All GPUs** view puts every GPU side by side.
 - **Processes:** which programs use the GPU, with dedicated and shared memory per process.
 - **Details:** architecture, CUDA cores, memory bus, PCIe link, BIOS, driver, CUDA version and compute capability, and DirectX/Vulkan/OpenCL support.
 - **Sensors:** every sensor with min/max/avg and history.

@@ -432,8 +432,8 @@ namespace GpuS
             View.Dock = DockStyle.Fill;
             Controls.Add(View);
             int U = Font.Height;
-            ClientSize = new Size(U * 17, View.RowH * 3 + U / 2);
-            MinimumSize = new Size(U * 12, View.RowH * 3);
+            ClientSize = new Size(U * 17, View.RowH * MiniView.Rows + U / 2);
+            MinimumSize = new Size(U * 12, View.RowH * MiniView.Rows);
         }
     }
 

@@ -79,6 +79,9 @@ Not available (NVIDIA only)|不可用（仅限 NVIDIA）|不可用（僅限 NVID
 {0:N0} MB used  ·  {1:N0} MB free  ·  {2:0.0}%|已用 {0:N0} MB  ·  可用 {1:N0} MB  ·  {2:0.0}%|已用 {0:N0} MB  ·  可用 {1:N0} MB  ·  {2:0.0}%|使用 {0:N0} MB  ·  空き {1:N0} MB  ·  {2:0.0}%|사용 {0:N0} MB  ·  여유 {1:N0} MB  ·  {2:0.0}%|{0:N0} MB usados  ·  {1:N0} MB libres  ·  {2:0.0} %|{0:N0} Mo utilisés  ·  {1:N0} Mo libres  ·  {2:0.0} %|{0:N0} MB belegt  ·  {1:N0} MB frei  ·  {2:0.0} %
 shared {0:N0} MB|共享 {0:N0} MB|共用 {0:N0} MB|共有 {0:N0} MB|공유 {0:N0} MB|compartida {0:N0} MB|partagée {0:N0} Mo|gemeinsam {0:N0} MB
 {0:N0} MB used|已用 {0:N0} MB|已用 {0:N0} MB|使用 {0:N0} MB|사용 {0:N0} MB|{0:N0} MB usados|{0:N0} Mo utilisés|{0:N0} MB belegt
+System RAM|系统内存|系統記憶體|システムメモリ|시스템 메모리|RAM del sistema|RAM système|System-RAM
+CPU Usage|CPU 利用率|CPU 使用率|CPU 使用率|CPU 사용률|Uso de CPU|Utilisation CPU|CPU-Auslastung
+RAM Used|已用内存|已用記憶體|使用メモリ (RAM)|사용 RAM|RAM usada|RAM utilisée|Belegter RAM
 Utilization|利用率|使用率|使用率|사용률|Uso|Utilisation|Auslastung
 Memory|显存|記憶體|メモリ|메모리|Memoria|Mémoire|Speicher
 GPU clock|GPU 频率|GPU 時脈|GPU クロック|GPU 클럭|Reloj de GPU|Fréquence GPU|GPU-Takt

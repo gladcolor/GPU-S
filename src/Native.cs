@@ -27,6 +27,20 @@ namespace GpuS
         {
             return LoadLibraryExW(name, IntPtr.Zero, LOAD_LIBRARY_SEARCH_SYSTEM32) != IntPtr.Zero;
         }
+
+        // CPU and RAM (Task Manager's numbers) - two cheap calls, no admin.
+        [DllImport("kernel32.dll")]
+        public static extern bool GetSystemTimes(out long idle, out long kernel, out long user);
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct MEMORYSTATUSEX
+        {
+            public uint dwLength, dwMemoryLoad;
+            public ulong ullTotalPhys, ullAvailPhys, ullTotalPageFile, ullAvailPageFile, ullTotalVirtual, ullAvailVirtual, ullAvailExtendedVirtual;
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool GlobalMemoryStatusEx(ref MEMORYSTATUSEX status);
     }
 
     // ------------------------------------------------------------------ DXGI
