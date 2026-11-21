@@ -84,7 +84,7 @@ namespace GpuS
         public SensorSet Sensors;
         public SensorSet System;
         public string MemorySensor = "Memory Used";
-        public const int Rows = 5;
+        public const int Rows = 6;
 
         public MiniView()
         {
@@ -122,6 +122,9 @@ namespace GpuS
             Row(g, 3, "CPU", cpu == null || cpu.Count == 0 ? "–" : cpu.Value.ToString("0") + " %", Theme.Text, cpu);
             Row(g, 4, "RAM", ram == null || ram.Count == 0 || ram.FixedMax <= 0 ? "–"
                 : string.Format("{0:0}/{1:0} GB", ram.Value / 1024, ram.FixedMax / 1024), Theme.Text, ram);
+            Sensor rx = System == null ? null : System.Find("Net Receive");
+            Sensor tx = System == null ? null : System.Find("Net Send");
+            Row(g, 5, "NET", rx == null || rx.Count == 0 || tx == null ? "–" : Units.RatePair(rx.Value, tx.Value).Replace("  ", " "), Theme.Text, rx);
         }
 
         private void Row(Graphics g, int i, string label, string value, Color valueColor, Sensor s)

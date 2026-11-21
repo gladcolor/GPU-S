@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -12,7 +12,7 @@ namespace GpuS
     internal sealed class MainForm : Form
     {
         public const string AppName = "GPU-S";
-        public const string AppVersion = "1.3";
+        public const string AppVersion = "1.4";
         public const string Author = "Ning, Huan (宁欢)";
         public const string AuthorEmail = "gladcolor@gmail.com";
         public static readonly Icon AppIcon = MakeIcon();
@@ -68,7 +68,7 @@ namespace GpuS
         private string logPath;
         private bool tempAlerted, memAlerted, spillAlerted;
         public int StartTab = -1;
-        public bool StartAllGpus;
+        public bool StartAllGpus, StartMini;
 
         public MainForm()
         {
@@ -360,6 +360,7 @@ namespace GpuS
             else { hero.Title = Lang.L("No graphics adapter found"); hero.Invalidate(); }
             UpdateStatus();
             timer.Start();
+            if (StartMini) ToggleMini();
         }
 
         private void UpdateStatus()

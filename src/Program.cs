@@ -34,6 +34,7 @@ namespace GpuS
                 int i = Array.FindIndex(tabs, t => t.Equals(a, StringComparison.OrdinalIgnoreCase));
                 if (i >= 0) form.StartTab = i;
                 if (a.Equals("--all-gpus", StringComparison.OrdinalIgnoreCase)) { form.StartTab = 0; form.StartAllGpus = true; }
+                if (a.Equals("--mini", StringComparison.OrdinalIgnoreCase)) form.StartMini = true;
             }
             Application.Run(form);
             return 0;

@@ -81,6 +81,7 @@ shared {0:N0} MB|共享 {0:N0} MB|共用 {0:N0} MB|共有 {0:N0} MB|공유 {0:N0
 {0:N0} MB used|已用 {0:N0} MB|已用 {0:N0} MB|使用 {0:N0} MB|사용 {0:N0} MB|{0:N0} MB usados|{0:N0} Mo utilisés|{0:N0} MB belegt
 System RAM|系统内存|系統記憶體|システムメモリ|시스템 메모리|RAM del sistema|RAM système|System-RAM
 CPU Usage|CPU 利用率|CPU 使用率|CPU 使用率|CPU 사용률|Uso de CPU|Utilisation CPU|CPU-Auslastung
+Network|网络|網路|ネットワーク|네트워크|Red|Réseau|Netzwerk
 RAM Used|已用内存|已用記憶體|使用メモリ (RAM)|사용 RAM|RAM usada|RAM utilisée|Belegter RAM
 Utilization|利用率|使用率|使用率|사용률|Uso|Utilisation|Auslastung
 Memory|显存|記憶體|メモリ|메모리|Memoria|Mémoire|Speicher

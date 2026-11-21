@@ -64,6 +64,48 @@ namespace GpuS
         }
     }
 
+    // Formatting for network rates and byte counts (binary units, as in Explorer and browsers on Windows).
+    internal static class Units
+    {
+        private static readonly string[] Names = { "B", "KB", "MB", "GB", "TB" };
+
+        private static int Level(double v)
+        {
+            int k = 0;
+            while (k < 4 && Math.Abs(v) >= 1000) { v /= 1024; k++; }
+            return k;
+        }
+
+        private static string Fmt(double v, int k, IFormatProvider f)
+        {
+            double x = v / Math.Pow(1024, k);
+            return x.ToString(x >= 100 || k == 0 ? "0" : x >= 10 ? "0.#" : "0.##", f) + " " + Names[k];
+        }
+
+        public static string Bytes(double v, IFormatProvider f) { return Fmt(v, Level(v), f); }
+        public static string Rate(double v, IFormatProvider f) { return Fmt(v, Math.Max(1, Level(v)), f) + "/s"; }
+
+        // Both rates in one unit (picked by the larger), e.g. "↓ 12.3  ↑ 0.4 MB/s".
+        public static string RatePair(double rx, double tx)
+        {
+            int k = Math.Max(1, Level(Math.Max(rx, tx)));
+            double d = Math.Pow(1024, k);
+            string fmt = Math.Max(rx, tx) / d >= 100 ? "0" : "0.0";
+            return "↓ " + (rx / d).ToString(fmt) + "  ↑ " + (tx / d).ToString(fmt) + " " + Names[k] + "/s";
+        }
+
+        // Graph scale: next 1-2-5 step above v, at least 100 KB/s so idle noise stays flat.
+        public static double NiceScale(double v)
+        {
+            v = Math.Max(v, 100 * 1024);
+            int k = Level(v);
+            double unit = Math.Pow(1024, k), x = v / unit, p = Math.Pow(10, Math.Floor(Math.Log10(x)));
+            double n = x <= p ? p : x <= 2 * p ? 2 * p : x <= 5 * p ? 5 * p : 10 * p;
+            if (n >= 1000) { n = 1; unit *= 1024; } // 1000 KB/s -> 1 MB/s
+            return n * unit;
+        }
+    }
+
     internal sealed class SensorSet
     {
         public readonly List<Sensor> List = new List<Sensor>();
@@ -73,6 +115,7 @@ namespace GpuS
         public RunStats Run = new RunStats();
         public bool Spilling;        // dedicated memory nearly full and shared (system RAM) use grew
         public double SpillMb, SharedBaseline = double.MaxValue;
+        public double NetRxTotal, NetTxTotal; // system set only: bytes since GPU-S started
 
         // Short description of throttling that actually limits performance, or null.
         public string ThrottleWarning
@@ -122,10 +165,21 @@ namespace GpuS
         public double UtilSum, UtilMax, MemPeak, MemTotal, SharedPeak, TempMax = double.NaN, PowerSum, PowerMax;
         public long CpuN;
         public double CpuSum, CpuMax, RamPeak, RamTotal;
+        public double RxStart = double.NaN, TxStart, RxEnd, TxEnd, RxPeak, TxPeak;
+        public bool HasNet;
 
         public void Add(SensorSet s, GpuDevice g, SensorSet sys)
         {
             Samples++;
+            if (sys != null)
+            {
+                if (double.IsNaN(RxStart)) { RxStart = sys.NetRxTotal; TxStart = sys.NetTxTotal; }
+                RxEnd = sys.NetRxTotal; TxEnd = sys.NetTxTotal;
+                Sensor n = sys.Find("Net Receive");
+                if (n != null && n.Count > 0) { HasNet = true; RxPeak = Math.Max(RxPeak, n.Value); }
+                n = sys.Find("Net Send");
+                if (n != null && n.Count > 0) TxPeak = Math.Max(TxPeak, n.Value);
+            }
             Sensor c = sys == null ? null : sys.Find("CPU Usage");
             if (c != null && c.Count > 0) { CpuSum += c.Value; CpuN++; CpuMax = Math.Max(CpuMax, c.Value); }
             c = sys == null ? null : sys.Find("RAM Used");
@@ -186,6 +240,9 @@ namespace GpuS
                 Row(sb, "Spilled into system RAM", string.Format(Inv, "{0:0.0} % of the time", Samples > 0 ? 100.0 * SpillSamples / Samples : 0));
             if (CpuN > 0) Row(sb, "CPU utilization", string.Format(Inv, "avg {0:0.0} %, max {1:0} %", CpuSum / CpuN, CpuMax));
             if (RamTotal > 0) Row(sb, "Peak system RAM", string.Format(Inv, "{0:N0} / {1:N0} MiB ({2:0.0} %)", RamPeak, RamTotal, 100 * RamPeak / RamTotal));
+            if (HasNet)
+                Row(sb, "Network (physical adapters)", string.Format(Inv, "received {0} (peak {1}), sent {2} (peak {3})",
+                    Units.Bytes(RxEnd - RxStart, Inv), Units.Rate(RxPeak, Inv), Units.Bytes(TxEnd - TxStart, Inv), Units.Rate(TxPeak, Inv)));
             string drv = g.NvDriverVersion ?? g.DriverVersion ?? "n/a";
             Row(sb, "Driver", g.CudaVersion != null ? drv + ", CUDA " + g.CudaVersion : drv);
             sb.AppendLine();
@@ -242,6 +299,31 @@ namespace GpuS
             m.dwLength = (uint)Marshal.SizeOf(typeof(Kernel32.MEMORYSTATUSEX));
             if (Kernel32.GlobalMemoryStatusEx(ref m) && m.ullTotalPhys > 0)
                 System.Get("RAM Used", "MB", "N0", m.ullTotalPhys / 1048576.0).Push((m.ullTotalPhys - m.ullAvailPhys) / 1048576.0);
+            SampleNetwork();
+        }
+
+        private ulong lastRx, lastTx;
+        private DateTime lastNet = DateTime.MinValue;
+        private bool netFailed;
+
+        // Receive / send rates in bytes per second, plus running byte totals for the run summary.
+        private void SampleNetwork()
+        {
+            if (netFailed) return;
+            ulong rx, tx;
+            try { if (!IpHelper.Totals(out rx, out tx)) return; }
+            catch (Exception) { netFailed = true; return; }
+            DateTime now = DateTime.UtcNow;
+            if (lastNet != DateTime.MinValue)
+            {
+                double dt = (now - lastNet).TotalSeconds;
+                bool ok = rx >= lastRx && tx >= lastTx && dt > 0; // an adapter going down can lower the sum
+                double dRx = ok ? rx - lastRx : 0, dTx = ok ? tx - lastTx : 0;
+                System.NetRxTotal += dRx; System.NetTxTotal += dTx;
+                System.Get("Net Receive", "B/s", "N0", 0).Push(ok ? dRx / dt : 0);
+                System.Get("Net Send", "B/s", "N0", 0).Push(ok ? dTx / dt : 0);
+            }
+            lastRx = rx; lastTx = tx; lastNet = now;
         }
 
         // NVIDIA: one tiny counter (a few instances) for shared GPU memory, used to detect sysmem fallback.

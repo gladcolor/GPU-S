@@ -1,6 +1,6 @@
-# GPU-S: a GPU monitor for Windows AI developers
+﻿# GPU-S: a GPU monitor for Windows AI developers
 
-**One ~175 KB file. No installation. No admin rights. Free, no ads, no tracking.**
+**One ~180 KB file. No installation. No admin rights. Free, no ads, no tracking.**
 Readings match `nvidia-smi`, and the interface is available in 8 languages.
 
 ![Monitor](docs/monitor.png)
@@ -16,12 +16,12 @@ Common problems when training models on Windows, and how GPU-S handles them:
 | Training suddenly gets **10x slower** when VRAM fills up and the driver quietly spills into system RAM ("Sysmem Fallback") | A **spill warning** on the graph and a pop-up alert that suggests the fix |
 | GPU-Z, HWiNFO and similar tools **need admin rights** or an installer, which is often impossible on work and university PCs | A single exe that runs as a standard user |
 | Long runs slow down because of **power or thermal throttling** | A live throttle badge, plus "time throttled" in the run summary |
-| Is training slow because of the GPU or the data loader? | CPU and system RAM graphs next to the GPU, as in Task Manager |
-| You need numbers for a paper or for tuning a job | **Run summary** in Markdown: peak GPU memory, average and maximum utilization, maximum temperature, power, throttling, CPU and peak RAM |
+| Is training slow because of the GPU, the data loader or a dataset download? | CPU, system RAM and network graphs next to the GPU, as in Task Manager |
+| You need numbers for a paper or for tuning a job | **Run summary** in Markdown: peak GPU memory, average and maximum utilization, maximum temperature, power, throttling, CPU, peak RAM and network traffic |
 
 ## Features
 
-- **Monitor:** Task Manager-style graphs of GPU utilization, GPU memory (exact MB used and free; turns orange at 90% and red at 95%), temperature, **CPU** and **system RAM**. CPU and RAM help you tell whether a slow run is GPU-bound or data-loader-bound. Ranges of 1 minute, 10 minutes or 1 hour. The **All GPUs** view puts every GPU side by side.
+- **Monitor:** Task Manager-style graphs of GPU utilization, GPU memory (exact MB used and free; turns orange at 90% and red at 95%), temperature, **CPU**, **system RAM** and **network** (receive and send). They help you tell whether a slow run is GPU-bound, data-loader-bound or waiting on a download or remote storage. Ranges of 1 minute, 10 minutes or 1 hour. The **All GPUs** view puts every GPU side by side.
 - **Processes:** which programs use the GPU, with dedicated and shared memory per process.
 - **Details:** architecture, CUDA cores, memory bus, PCIe link, BIOS, driver, CUDA version and compute capability, and DirectX/Vulkan/OpenCL support.
 - **Sensors:** every sensor with min/max/avg and history.
@@ -60,13 +60,14 @@ plus `run.summary.md`:
 | Spilled into system RAM | 0.0 % of the time |
 ```
 
-Other options: `--monitor`, `--processes`, `--details`, `--sensors`, `--about` or `--all-gpus` opens on that view.
+Other options: `--monitor`, `--processes`, `--details`, `--sensors`, `--about` or `--all-gpus` opens on that view; `--mini` starts in the mini window.
 
 ## How it works (everything available without admin rights)
 
 - **NVML (`nvml.dll`, installed with the NVIDIA driver):** utilization, memory (v2 API, the same one current nvidia-smi uses), temperature, clocks, power, fan and throttle reasons.
 - **Windows GPU performance counters:** per-process memory, shared memory and spill detection, and non-NVIDIA GPUs.
 - **DXGI and cfgmgr32:** adapter list, PCIe link and driver details.
+- **CPU, RAM and network:** `GetSystemTimes`, `GlobalMemoryStatusEx` and `GetIfTable2` (physical adapters only, so VPN and virtual adapters are not counted twice).
 - **DirectX, Vulkan and OpenCL support:** checked once in a short-lived child process, so the monitor itself stays at about 40 MB RAM and under 1% CPU.
 - **Settings:** stored in `HKCU\Software\GPU-S`. No files are written next to the exe.
 

@@ -14,6 +14,39 @@ using System.Text;
 
 namespace GpuS
 {
+    // Network byte counters (iphlpapi GetIfTable2; no admin). Sums physical adapters that are up,
+    // skipping loopback and the filter-driver copies of each NIC so traffic is not counted twice.
+    internal static class IpHelper
+    {
+        [DllImport("iphlpapi.dll")] private static extern int GetIfTable2(out IntPtr table);
+        [DllImport("iphlpapi.dll")] private static extern void FreeMibTable(IntPtr memory);
+
+        // MIB_IF_ROW2 (x64): 1352 bytes; the table header (NumEntries) is padded to 8 bytes.
+        private const int RowSize = 1352, OffType = 1128, OffFlags = 1152, OffOper = 1156, OffIn = 1208, OffOut = 1280;
+
+        public static bool Totals(out ulong rx, out ulong tx)
+        {
+            rx = tx = 0;
+            IntPtr t;
+            if (GetIfTable2(out t) != 0 || t == IntPtr.Zero) return false;
+            try
+            {
+                int n = Marshal.ReadInt32(t);
+                for (int i = 0; i < n && i < 4096; i++)
+                {
+                    IntPtr r = t + 8 + i * RowSize;
+                    byte flags = Marshal.ReadByte(r, OffFlags);          // bit 0 HardwareInterface, bit 1 FilterInterface
+                    if ((flags & 1) == 0 || (flags & 2) != 0) continue;
+                    if (Marshal.ReadInt32(r, OffType) == 24 || Marshal.ReadInt32(r, OffOper) != 1) continue; // loopback / not up
+                    rx += (ulong)Marshal.ReadInt64(r, OffIn);
+                    tx += (ulong)Marshal.ReadInt64(r, OffOut);
+                }
+                return true;
+            }
+            finally { FreeMibTable(t); }
+        }
+    }
+
     internal static class Kernel32
     {
         private const uint LOAD_LIBRARY_SEARCH_SYSTEM32 = 0x00000800;

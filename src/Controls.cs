@@ -1,4 +1,4 @@
-// Custom-drawn dark UI: theme, tab strip, pill buttons, hero header with live tiles,
+﻿// Custom-drawn dark UI: theme, tab strip, pill buttons, hero header with live tiles,
 // spec cards and the sensor list. Plain GDI drawing only - no extra libraries.
 
 using System;
@@ -122,7 +122,25 @@ namespace GpuS
         public static readonly Color Warn = Color.FromArgb(0xD9, 0x7A, 0x00);
         public static readonly Color Danger = Color.FromArgb(0xD9, 0x2D, 0x20);
 
+        public static readonly Color NetColor = Color.FromArgb(0x00, 0x86, 0x7A);   // teal: distinct from GPU green and warning orange
+
+        // Largest value among the newest 'window' samples.
+        public static double WindowMax(Sensor s, int window)
+        {
+            double max = 0;
+            if (s == null) return 0;
+            int avail = Math.Min(window, s.HistoryCount);
+            for (int a = 0; a < avail; a++) max = Math.Max(max, s.HistoryAt(s.HistoryCount - 1 - a));
+            return max;
+        }
+
         public static void TaskGraph(Graphics g, Rectangle r, Sensor s, double max, int window, Color color)
+        {
+            TaskGraph(g, r, s, max, window, color, null);
+        }
+
+        // 'dashed' (optional) is a second series drawn as a dashed line on the same scale (network send).
+        public static void TaskGraph(Graphics g, Rectangle r, Sensor s, double max, int window, Color color, Sensor dashed)
         {
             using (var b = new SolidBrush(Mix(Color.White, color, 0.04))) g.FillRectangle(b, r);
             using (var grid = new Pen(Color.FromArgb(40, color)))
@@ -130,43 +148,49 @@ namespace GpuS
                 for (int i = 1; i < 10; i++) { int x = r.X + r.Width * i / 10; g.DrawLine(grid, x, r.Y, x, r.Bottom); }
                 for (int i = 1; i < 5; i++) { int y = r.Y + r.Height * i / 5; g.DrawLine(grid, r.X, y, r.Right, y); }
             }
-            if (s != null && s.HistoryCount >= 2 && window >= 2 && r.Width > 4)
+            if (s != null && max <= 0) max = s.FixedMax;
+            if (s != null && max <= 0) { max = WindowMax(s, window); max = max <= 0 ? 1 : max * 1.15; }
+            PointF[] line = Line(r, s, max, window);
+            SmoothingMode old = g.SmoothingMode;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            if (line != null)
             {
-                int avail = Math.Min(window, s.HistoryCount);
-                if (max <= 0) max = s.FixedMax;
-                if (max <= 0)
-                {
-                    for (int a = 0; a < avail; a++) max = Math.Max(max, s.HistoryAt(s.HistoryCount - 1 - a));
-                    max = max <= 0 ? 1 : max * 1.15;
-                }
-                int cols = Math.Max(2, Math.Min(window, r.Width));
-                double perCol = window / (double)cols;
-                float step = (r.Width - 1) / (float)(cols - 1);
-                var pts = new List<PointF>(cols + 2);
-                for (int c = cols - 1; c >= 0; c--)
-                {
-                    int a0 = (int)((cols - 1 - c) * perCol);
-                    if (a0 >= avail) break;
-                    int a1 = Math.Min(avail, Math.Max(a0 + 1, (int)((cols - c) * perCol)));
-                    double v = 0;
-                    for (int a = a0; a < a1; a++) v = Math.Max(v, s.HistoryAt(s.HistoryCount - 1 - a));
-                    v = Math.Max(0, Math.Min(max, v));
-                    pts.Add(new PointF(r.X + c * step, (float)(r.Bottom - 1 - v / max * (r.Height - 2))));
-                }
-                if (pts.Count >= 2)
-                {
-                    pts.Reverse();
-                    PointF[] line = pts.ToArray();
-                    pts.Add(new PointF(line[line.Length - 1].X, r.Bottom - 1));
-                    pts.Add(new PointF(line[0].X, r.Bottom - 1));
-                    SmoothingMode old = g.SmoothingMode;
-                    g.SmoothingMode = SmoothingMode.AntiAlias;
-                    using (var b = new SolidBrush(Color.FromArgb(55, color))) g.FillPolygon(b, pts.ToArray());
-                    using (var p = new Pen(color, 1.5f)) g.DrawLines(p, line);
-                    g.SmoothingMode = old;
-                }
+                var poly = new PointF[line.Length + 2];
+                Array.Copy(line, poly, line.Length);
+                poly[line.Length] = new PointF(line[line.Length - 1].X, r.Bottom - 1);
+                poly[line.Length + 1] = new PointF(line[0].X, r.Bottom - 1);
+                using (var b = new SolidBrush(Color.FromArgb(55, color))) g.FillPolygon(b, poly);
+                using (var p = new Pen(color, 1.5f)) g.DrawLines(p, line);
             }
+            PointF[] line2 = Line(r, dashed, max, window);
+            if (line2 != null)
+                using (var p = new Pen(Mix(color, Text, 0.35), 1.5f) { DashStyle = DashStyle.Dash }) g.DrawLines(p, line2);
+            g.SmoothingMode = old;
             using (var p = new Pen(Color.FromArgb(170, color))) g.DrawRectangle(p, r.X, r.Y, r.Width - 1, r.Height - 1);
+        }
+
+        // Newest sample at the right edge; one point per pixel column (max of the samples in it).
+        private static PointF[] Line(Rectangle r, Sensor s, double max, int window)
+        {
+            if (s == null || s.HistoryCount < 2 || window < 2 || r.Width <= 4 || max <= 0) return null;
+            int avail = Math.Min(window, s.HistoryCount);
+            int cols = Math.Max(2, Math.Min(window, r.Width));
+            double perCol = window / (double)cols;
+            float step = (r.Width - 1) / (float)(cols - 1);
+            var pts = new List<PointF>(cols);
+            for (int c = cols - 1; c >= 0; c--)
+            {
+                int a0 = (int)((cols - 1 - c) * perCol);
+                if (a0 >= avail) break;
+                int a1 = Math.Min(avail, Math.Max(a0 + 1, (int)((cols - c) * perCol)));
+                double v = 0;
+                for (int a = a0; a < a1; a++) v = Math.Max(v, s.HistoryAt(s.HistoryCount - 1 - a));
+                v = Math.Max(0, Math.Min(max, v));
+                pts.Add(new PointF(r.X + c * step, (float)(r.Bottom - 1 - v / max * (r.Height - 2))));
+            }
+            if (pts.Count < 2) return null;
+            pts.Reverse();
+            return pts.ToArray();
         }
     }
 
@@ -453,35 +477,44 @@ namespace GpuS
                 total > 0 ? string.Format("{0:N0} MB", total) : "", span, mem, 0, null, memColor);
 
             string tNow = temp != null && temp.Count > 0 ? temp.Value.ToString("0") + " °C" : "";
-            // Bottom row: three equal panels.
+            // Bottom row: four equal panels. Headers show the current value only when it fits; the stats grid always has it.
             Sensor cpu = System == null ? null : System.Find("CPU Usage");
             Sensor ram = System == null ? null : System.Find("RAM Used");
-            int gap = pad, w3 = (area.Width - gap * 2) / 3, y3 = area.Y + h1 + h2;
-            DrawPanel(g, new Rectangle(area.X, y3, w3, h3), Lang.L("Temperature"), tNow, Theme.Muted, "100 °C", span, temp, 100,
+            Sensor rx = System == null ? null : System.Find("Net Receive");
+            Sensor tx = System == null ? null : System.Find("Net Send");
+            int gap = pad, w4 = (area.Width - gap * 3) / 4, y3 = area.Y + h1 + h2;
+            DrawPanel(g, new Rectangle(area.X, y3, w4, h3), Lang.L("Temperature"), tNow, Theme.Muted, "100 °C", span, temp, 100,
                 temp == null ? Lang.L("Not available (NVIDIA only)") : null, Theme.Accent);
             string cpuNow = cpu != null && cpu.Count > 0 ? cpu.Value.ToString("0") + "%" : "";
-            DrawPanel(g, new Rectangle(area.X + w3 + gap, y3, w3, h3), "CPU", cpuNow, Theme.Muted, "100%", span, cpu, 100, null, Theme.CpuColor);
+            DrawPanel(g, new Rectangle(area.X + w4 + gap, y3, w4, h3), "CPU", cpuNow, Theme.Muted, "100%", span, cpu, 100, null, Theme.CpuColor);
             string ramNow = "", ramText = "–";
             if (ram != null && ram.Count > 0 && ram.FixedMax > 0)
             {
                 ramNow = string.Format("{0:0.0} GB", ram.Value / 1024);
                 ramText = string.Format("{0:0.0} / {1:0} GB", ram.Value / 1024, ram.FixedMax / 1024);
             }
-            DrawPanel(g, new Rectangle(area.X + (w3 + gap) * 2, y3, area.Width - (w3 + gap) * 2, h3), Lang.L("System RAM"), ramNow, Theme.Muted,
+            DrawPanel(g, new Rectangle(area.X + (w4 + gap) * 2, y3, w4, h3), Lang.L("System RAM"), ramNow, Theme.Muted,
                 ram != null && ram.FixedMax > 0 ? string.Format("{0:0} GB", ram.FixedMax / 1024) : "", span, ram, 0, null, Theme.RamColor);
+            // Network: receive = filled area, send = dashed line, shared 1-2-5 scale.
+            string netText = rx != null && rx.Count > 0 && tx != null ? Units.RatePair(rx.Value, tx.Value) : "–";
+            double netMax = Units.NiceScale(Math.Max(Theme.WindowMax(rx, WindowSamples), Theme.WindowMax(tx, WindowSamples)));
+            DrawPanel(g, new Rectangle(area.X + (w4 + gap) * 3, y3, area.Width - (w4 + gap) * 3, h3), Lang.L("Network"),
+                netText == "–" ? "" : netText, Theme.Muted, rx == null ? "" : Units.Rate(netMax, null), span, rx, netMax, null, Theme.NetColor, tx);
 
             // Stats: 4 columns x 2 rows (GPU first row, system second row).
-            string[] labels = { "Utilization", "GPU memory", "Temperature", "Power", "CPU", "System RAM", "GPU clock", "Fan" };
+            Sensor fan = Find("Fan Speed");
+            string tempLabel = fan != null && fan.Count > 0 ? Lang.L("Temperature") + "  ·  " + Lang.L("Fan") + " " + fan.Value.ToString("0") + "%" : Lang.L("Temperature");
+            string[] labels = { Lang.L("Utilization"), Lang.L("GPU memory"), tempLabel, Lang.L("Power"), "CPU", Lang.L("System RAM"), Lang.L("Network"), Lang.L("GPU clock") };
             string[] values =
             {
                 Val(load), memText, Val(temp), Val(Find("Board Power Draw")),
-                cpu != null && cpu.Count > 0 ? cpu.Value.ToString("0") + " %" : "–", ramText, Val(Find("GPU Clock")), Val(Find("Fan Speed")),
+                cpu != null && cpu.Count > 0 ? cpu.Value.ToString("0") + " %" : "–", ramText, netText, Val(Find("GPU Clock")),
             };
             int colW = stats.Width / 4;
             for (int i = 0; i < 8; i++)
             {
                 int x = stats.X + (i % 4) * colW, y = stats.Y + pad + (i / 4) * cellH;
-                Theme.Draw(g, Lang.L(labels[i]), Theme.Small, new Rectangle(x, y, colW - 6, Theme.Small.Height), Theme.Muted, TextFormatFlags.Left);
+                Theme.Draw(g, labels[i], Theme.Small, new Rectangle(x, y, colW - 6, Theme.Small.Height), Theme.Muted, TextFormatFlags.Left);
                 Theme.Draw(g, values[i], Theme.Mid, new Rectangle(x, y + Theme.Small.Height + 1, colW - 6, Theme.Mid.Height), Theme.Text, TextFormatFlags.Left);
             }
         }
@@ -530,25 +563,50 @@ namespace GpuS
         private int DrawPanel(Graphics g, Rectangle r, string title, string now, Color nowColor, string maxText, string span,
             Sensor s, double max, string empty, Color color)
         {
-            int th = Theme.Semi.Height + 4, bh = Theme.Small.Height + 6;
+            return DrawPanel(g, r, title, now, nowColor, maxText, span, s, max, empty, color, null);
+        }
+
+        // 'dashed' (network send) adds a dashed series and a small solid/dashed legend under the graph.
+        private int DrawPanel(Graphics g, Rectangle r, string title, string now, Color nowColor, string maxText, string span,
+            Sensor s, double max, string empty, Color color, Sensor dashed)
+        {
+            int th = Theme.Semi.Height + 4, bh = Theme.Small.Height + 6, U = Font.Height;
             if (r.Height < th + bh + 10) return r.X;
             int tw = TextRenderer.MeasureText(g, title, Theme.Semi, Size.Empty, TextFormatFlags.NoPadding).Width;
             int mw = TextRenderer.MeasureText(g, maxText, Theme.Small, Size.Empty, TextFormatFlags.NoPadding).Width;
-            Theme.Draw(g, title, Theme.Semi, new Rectangle(r.X, r.Y, tw + 4, th), Theme.Text, TextFormatFlags.Left);
+            Theme.Draw(g, title, Theme.Semi, new Rectangle(r.X, r.Y, Math.Min(tw + 4, r.Width - mw - 4), th), Theme.Text, TextFormatFlags.Left);
             int x = r.X + tw;
             if (!string.IsNullOrEmpty(now))
             {
                 int nw = TextRenderer.MeasureText(g, now, Theme.Semi, Size.Empty, TextFormatFlags.NoPadding).Width;
-                Theme.Draw(g, now, Theme.Semi, new Rectangle(x + Font.Height, r.Y, Math.Max(0, Math.Min(nw + 4, r.Width - tw - mw - Font.Height * 2)), th), nowColor, TextFormatFlags.Left);
-                x += Font.Height + nw;
+                if (tw + U + nw + U + mw <= r.Width) // only when it fits whole (no "45 °…")
+                {
+                    Theme.Draw(g, now, Theme.Semi, new Rectangle(x + U, r.Y, nw + 4, th), nowColor, TextFormatFlags.Left);
+                    x += U + nw;
+                }
             }
             Theme.Draw(g, maxText, Theme.Small, new Rectangle(r.X, r.Y + 2, r.Width, th), Theme.Muted, TextFormatFlags.Right);
             var gr = new Rectangle(r.X, r.Y + th, r.Width, r.Height - th - bh);
-            Theme.TaskGraph(g, gr, s, max, WindowSamples, color);
+            Theme.TaskGraph(g, gr, s, max, WindowSamples, color, dashed);
             if (empty != null)
                 Theme.Draw(g, empty, Font, gr, Theme.Muted, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
-            Theme.Draw(g, span, Theme.Small, new Rectangle(r.X, gr.Bottom + 2, r.Width, Theme.Small.Height), Theme.Muted, TextFormatFlags.Left);
-            Theme.Draw(g, "0", Theme.Small, new Rectangle(r.X, gr.Bottom + 2, r.Width, Theme.Small.Height), Theme.Muted, TextFormatFlags.Right);
+            int fy = gr.Bottom + 2, fh = Theme.Small.Height;
+            if (dashed != null)
+            {
+                // Legend: ━ ↓   ╌ ↑   (receive solid, send dashed)
+                int lx = r.X, ly = fy + fh / 2, seg = U;
+                SmoothingMode old = g.SmoothingMode;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                using (var p = new Pen(color, 2f)) g.DrawLine(p, lx, ly, lx + seg, ly);
+                Theme.Draw(g, "↓", Theme.Semi, new Rectangle(lx + seg + 3, fy - 1, U, fh + 2), Theme.Text, TextFormatFlags.Left);
+                lx += seg + U + 6;
+                using (var p = new Pen(Theme.Mix(color, Theme.Text, 0.35), 2f) { DashStyle = DashStyle.Dash }) g.DrawLine(p, lx, ly, lx + seg, ly);
+                Theme.Draw(g, "↑", Theme.Semi, new Rectangle(lx + seg + 3, fy - 1, U, fh + 2), Theme.Text, TextFormatFlags.Left);
+                g.SmoothingMode = old;
+            }
+            else
+                Theme.Draw(g, span, Theme.Small, new Rectangle(r.X, fy, r.Width, fh), Theme.Muted, TextFormatFlags.Left);
+            Theme.Draw(g, "0", Theme.Small, new Rectangle(r.X, fy, r.Width, fh), Theme.Muted, TextFormatFlags.Right);
             return x;
         }
     }
