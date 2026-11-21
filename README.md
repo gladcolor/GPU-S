@@ -1,6 +1,6 @@
 # GPU-S: a GPU monitor for Windows AI developers
 
-**One 90 KB file. No installation. No admin rights. Free, no ads, no tracking.**
+**One ~175 KB file. No installation. No admin rights. Free, no ads, no tracking.**
 Readings match `nvidia-smi`, and the interface is available in 8 languages.
 
 ![Monitor](docs/monitor.png)
