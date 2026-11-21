@@ -1,0 +1,9 @@
+# Build intermediates
+*.pdb
+obj/
+
+# Local development notes (not published)
+CONVERSATION.md
+
+# Local copies
+bin/*Copy*.exe
