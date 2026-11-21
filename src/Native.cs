@@ -62,6 +62,9 @@ namespace GpuS
         }
 
         // CPU and RAM (Task Manager's numbers) - two cheap calls, no admin.
+        [DllImport("kernel32.dll")] public static extern IntPtr GetCurrentProcess();
+        [DllImport("kernel32.dll")] public static extern bool SetProcessWorkingSetSize(IntPtr process, IntPtr min, IntPtr max);
+
         [DllImport("kernel32.dll")]
         public static extern bool GetSystemTimes(out long idle, out long kernel, out long user);
 

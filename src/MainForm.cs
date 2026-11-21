@@ -12,7 +12,7 @@ namespace GpuS
     internal sealed class MainForm : Form
     {
         public const string AppName = "GPU-S";
-        public const string AppVersion = "1.4";
+        public const string AppVersion = "1.4.1";
         public const string Author = "Ning, Huan (宁欢)";
         public const string AuthorEmail = "gladcolor@gmail.com";
         public static readonly Icon AppIcon = MakeIcon();
@@ -343,7 +343,7 @@ namespace GpuS
 
                 // Slow part (DirectX / Vulkan / OpenCL) runs in a throw-away child process.
                 try { GpuDetector.ApplyProbe(list); } catch (Exception) { }
-                BeginInvoke((MethodInvoker)delegate { FillOverview(); UpdateStatus(); });
+                BeginInvoke((MethodInvoker)delegate { FillOverview(); UpdateStatus(); TrimSoon(); });
             });
         }
 
@@ -424,7 +424,7 @@ namespace GpuS
             v["directx"] = ApiValue(g.DirectX);
             v["vulkan"] = ApiValue(g.Vulkan);
             v["opencl"] = ApiValue(g.OpenCL);
-            v["cuda"] = g.CudaVersion == null ? Lang.L("Not supported") :
+            v["cuda"] = g.CudaVersion == null ? (g.HasNvml && g.DirectX == null ? Lang.L("Detecting…") : Lang.L("Not supported")) :
                 g.CudaVersion + (g.ComputeCapability != null ? "  ·  SM " + g.ComputeCapability : "");
             return v;
         }
@@ -607,6 +607,21 @@ namespace GpuS
         {
             base.OnResize(e);
             if (WindowState == FormWindowState.Minimized && settings.MinimizeToTray) Hide();
+        }
+
+        // Detection, the first paint and JIT compilation touch memory that is never needed again.
+        // Once startup is over, hand those pages back to Windows; the monitor then runs on what it really uses.
+        private void TrimSoon()
+        {
+            var t = new System.Windows.Forms.Timer { Interval = 3000 };
+            t.Tick += delegate
+            {
+                t.Dispose();
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                Kernel32.SetProcessWorkingSetSize(Kernel32.GetCurrentProcess(), (IntPtr)(-1), (IntPtr)(-1));
+            };
+            t.Start();
         }
 
         private void RestoreMain()

@@ -243,6 +243,7 @@ namespace GpuS
             if (HasNet)
                 Row(sb, "Network (physical adapters)", string.Format(Inv, "received {0} (peak {1}), sent {2} (peak {3})",
                     Units.Bytes(RxEnd - RxStart, Inv), Units.Rate(RxPeak, Inv), Units.Bytes(TxEnd - TxStart, Inv), Units.Rate(TxPeak, Inv)));
+            if (g.CudaVersion == null && g.HasNvml) g.CudaVersion = Nvml.CudaVersion(); // command-line logging has no probe
             string drv = g.NvDriverVersion ?? g.DriverVersion ?? "n/a";
             Row(sb, "Driver", g.CudaVersion != null ? drv + ", CUDA " + g.CudaVersion : drv);
             sb.AppendLine();

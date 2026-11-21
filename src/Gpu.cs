@@ -183,7 +183,8 @@ namespace GpuS
             uint count;
             if (Nvml.nvmlDeviceGetCount_v2(out count) != 0) return;
             string driver = Nvml.DriverVersion();
-            string cuda = Nvml.CudaVersion();
+            // The CUDA version is read in the probe child process: asking NVML for it loads nvcuda.dll
+            // (~30 MB image) into the process for good.
 
             for (uint i = 0; i < count; i++)
             {
@@ -199,7 +200,6 @@ namespace GpuS
                 g.Nvml = h;
                 g.PciBusId = pci.BusId;
                 g.NvDriverVersion = driver;
-                g.CudaVersion = cuda;
                 g.BiosVersion = Nvml.BiosVersion(h);
                 g.Architecture = Nvml.Architecture(h);
                 g.ComputeCapability = Nvml.ComputeCapability(h);
@@ -240,6 +240,8 @@ namespace GpuS
                 w.WriteLine("VK\t{0}\t{1}\t{2}", v.VendorId, v.DeviceId, Vulkan.FormatVersion(v.ApiVersion));
             foreach (var c in OpenCL.Enumerate())
                 w.WriteLine("CL\t{0}\t{1}", c.VendorId, c.Version ?? "");
+            string cuda = Nvml.Init() ? Nvml.CudaVersion() : null;
+            if (cuda != null) w.WriteLine("CU\t{0}", cuda);
             w.Flush();
         }
 
@@ -277,6 +279,10 @@ namespace GpuS
                     if (!uint.TryParse(f[1], out ven) || !uint.TryParse(f[2], out dev)) continue;
                     GpuDevice g = list.Find(x => !usedVk.Contains(x) && x.VendorId == ven && x.DeviceId == dev);
                     if (g != null) { g.Vulkan = f[3]; usedVk.Add(g); }
+                }
+                else if (f.Length >= 2 && f[0] == "CU")
+                {
+                    foreach (var g in list) if (g.HasNvml && f[1].Length > 0) g.CudaVersion = f[1];
                 }
                 else if (f.Length >= 3 && f[0] == "CL")
                 {
