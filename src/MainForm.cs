@@ -12,7 +12,7 @@ namespace GpuS
     internal sealed class MainForm : Form
     {
         public const string AppName = "GPU-S";
-        public const string AppVersion = "1.4.1";
+        public const string AppVersion = "1.5";
         public const string Author = "Ning, Huan (宁欢)";
         public const string AuthorEmail = "gladcolor@gmail.com";
         public static readonly Icon AppIcon = MakeIcon();
@@ -22,7 +22,7 @@ namespace GpuS
             { "name", "Name" }, { "arch", "Architecture" }, { "shaders", "Shaders" }, { "vendor", "Vendor" },
             { "subvendor", "Subvendor" }, { "devid", "Device ID" }, { "rev", "Revision" }, { "bios", "BIOS Version" },
             { "memsize", "Memory Size" }, { "buswidth", "Memory Bus Width" }, { "sharedmem", "Shared System Memory" },
-            { "bus", "Bus Interface" }, { "location", "Location" }, { "gpuclock", "GPU Clock (max)" },
+            { "bus", "Bus Interface" }, { "location", "Location" }, { "rebar", "Resizable BAR" }, { "gpuclock", "GPU Clock (max)" },
             { "memclock", "Memory Clock (max)" }, { "powerlimit", "Power Limit" }, { "driver", "Driver Version" },
             { "driverdate", "Driver Date" }, { "provider", "Driver Provider" }, { "nvdriver", "NVIDIA Driver" },
             { "directx", "DirectX" }, { "vulkan", "Vulkan" }, { "opencl", "OpenCL" }, { "cuda", "CUDA" },
@@ -32,7 +32,7 @@ namespace GpuS
         private static readonly string[][] CardLayout =
         {
             new[] { "Graphics Processor", "name*", "arch", "shaders", "vendor", "subvendor", "devid", "rev", "bios" },
-            new[] { "Memory & Bus", "memsize", "buswidth", "sharedmem", "bus*", "location*" },
+            new[] { "Memory & Bus", "memsize", "buswidth", "sharedmem", "rebar", "bus*", "location*" },
             new[] { "Clocks & Power", "gpuclock", "memclock", "powerlimit" },
             new[] { "Driver", "driver", "driverdate", "provider", "nvdriver" },
             new[] { "Graphics & Compute APIs!", "directx", "vulkan", "opencl", "cuda" },
@@ -414,6 +414,9 @@ namespace GpuS
             v["memsize"] = Mb(g.DedicatedVideoMemory);
             v["buswidth"] = g.MemoryBusWidth == 0 ? Lang.L("N/A") : g.MemoryBusWidth + "-bit";
             v["sharedmem"] = Mb(g.SharedSystemMemory);
+            // Without Resizable BAR the CPU sees VRAM through a 256 MB window; with it, through the whole VRAM.
+            v["rebar"] = g.Bar1Total == 0 ? Lang.L("N/A") :
+                Lang.L(g.Bar1Total > (512UL << 20) ? "Enabled" : "Disabled") + "  ·  BAR1 " + Mb(g.Bar1Total);
             v["powerlimit"] = g.PowerLimitW == 0 ? Lang.L("N/A") : g.PowerLimitW + " W";
             v["gpuclock"] = Mhz(g.MaxGpuClock);
             v["memclock"] = Mhz(g.MaxMemClock);

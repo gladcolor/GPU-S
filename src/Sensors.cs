@@ -162,7 +162,7 @@ namespace GpuS
         private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
         public readonly DateTime Start = DateTime.Now;
         public long Samples, UtilN, PowerN, ThrottleKnown, PowerThrottled, ThermalThrottled, SpillSamples;
-        public double UtilSum, UtilMax, MemPeak, MemTotal, SharedPeak, TempMax = double.NaN, PowerSum, PowerMax;
+        public double UtilSum, UtilMax, MemPeak, MemTotal, SharedPeak, TempMax = double.NaN, MemTempMax = double.NaN, PowerSum, PowerMax;
         public long CpuN;
         public double CpuSum, CpuMax, RamPeak, RamTotal;
         public double RxStart = double.NaN, TxStart, RxEnd, TxEnd, RxPeak, TxPeak;
@@ -192,6 +192,8 @@ namespace GpuS
             if (x != null && x.Count > 0) SharedPeak = Math.Max(SharedPeak, x.Value);
             x = s.Find("GPU Temperature");
             if (x != null && x.Count > 0) TempMax = double.IsNaN(TempMax) ? x.Value : Math.Max(TempMax, x.Value);
+            x = s.Find("Memory Temperature");
+            if (x != null && x.Count > 0) MemTempMax = double.IsNaN(MemTempMax) ? x.Value : Math.Max(MemTempMax, x.Value);
             x = s.Find("Board Power Draw");
             if (x != null && x.Count > 0) { PowerSum += x.Value; PowerN++; PowerMax = Math.Max(PowerMax, x.Value); }
             if (s.HasThrottle && (s.ThrottleRaw & 0x1) == 0) // ignore idle samples
@@ -232,6 +234,7 @@ namespace GpuS
                 : string.Format(Inv, "{0:N0} MiB", MemPeak));
             if (SharedPeak > 0) Row(sb, "Peak shared (system RAM) GPU memory", string.Format(Inv, "{0:N0} MiB", SharedPeak));
             if (!double.IsNaN(TempMax)) Row(sb, "Max temperature", string.Format(Inv, "{0:0} °C", TempMax));
+            if (!double.IsNaN(MemTempMax)) Row(sb, "Max memory (VRAM) temperature", string.Format(Inv, "{0:0} °C", MemTempMax));
             if (PowerN > 0) Row(sb, "Board power", string.Format(Inv, "avg {0:0.0} W, max {1:0.0} W", PowerSum / PowerN, PowerMax));
             if (ThrottleKnown > 0)
                 Row(sb, "Time throttled", string.Format(Inv, "power limit {0:0.0} %, thermal/HW {1:0.0} %",
@@ -269,7 +272,13 @@ namespace GpuS
         {
             SampleSystem();
             SensorSet s = For(g);
-            if (g.HasNvml) { SampleNvml(g.Nvml, s); SampleShared(g, s); }
+            if (g.HasNvml)
+            {
+                SampleNvml(g.Nvml, s);
+                double mt;
+                if (g.HasMemoryTemp && Nvml.MemoryTemperature(g.Nvml, out mt)) s.Get("Memory Temperature", "°C", "0", 110).Push(mt);
+                SampleShared(g, s);
+            }
             else SamplePdh(g, s);
             UpdateSpill(g, s);
             s.Run.Add(s, g, System);

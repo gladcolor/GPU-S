@@ -1,4 +1,4 @@
-// UI translations. Key = English text; columns: en | zh-CN | zh-TW | ja | ko | es | fr | de.
+﻿// UI translations. Key = English text; columns: en | zh-CN | zh-TW | ja | ko | es | fr | de.
 // Missing entries fall back to English. Logs and run summaries stay in English (nvidia-smi compatible).
 
 using System;
@@ -81,6 +81,11 @@ shared {0:N0} MB|共享 {0:N0} MB|共用 {0:N0} MB|共有 {0:N0} MB|공유 {0:N0
 {0:N0} MB used|已用 {0:N0} MB|已用 {0:N0} MB|使用 {0:N0} MB|사용 {0:N0} MB|{0:N0} MB usados|{0:N0} Mo utilisés|{0:N0} MB belegt
 System RAM|系统内存|系統記憶體|システムメモリ|시스템 메모리|RAM del sistema|RAM système|System-RAM
 CPU Usage|CPU 利用率|CPU 使用率|CPU 使用率|CPU 사용률|Uso de CPU|Utilisation CPU|CPU-Auslastung
+Resizable BAR|Resizable BAR（可调整大小 BAR）|Resizable BAR（可調整大小 BAR）|Resizable BAR|Resizable BAR|Resizable BAR|Resizable BAR|Resizable BAR
+Enabled|已开启|已開啟|有効|사용|Activado|Activé|Aktiviert
+Disabled|未开启|未開啟|無効|사용 안 함|Desactivado|Désactivé|Deaktiviert
+VRAM|显存|顯示記憶體|VRAM|VRAM|VRAM|VRAM|VRAM
+Memory Temperature|显存温度|記憶體溫度|メモリ温度|메모리 온도|Temperatura de memoria|Température mémoire|Speichertemperatur
 Network|网络|網路|ネットワーク|네트워크|Red|Réseau|Netzwerk
 RAM Used|已用内存|已用記憶體|使用メモリ (RAM)|사용 RAM|RAM usada|RAM utilisée|Belegter RAM
 Utilization|利用率|使用率|使用率|사용률|Uso|Utilisation|Auslastung

@@ -1,6 +1,6 @@
-﻿# GPU-S: a GPU monitor for Windows AI developers
+# GPU-S: a GPU monitor for Windows AI developers
 
-**One ~180 KB file. No installation. No admin rights. Free, no ads, no tracking.**
+**One ~185 KB file. No installation. No admin rights. Free, no ads, no tracking.**
 Readings match `nvidia-smi`, and the interface is available in 8 languages.
 
 ![Monitor](docs/monitor.png)
@@ -23,8 +23,8 @@ Common problems when training models on Windows, and how GPU-S handles them:
 
 - **Monitor:** Task Manager-style graphs of GPU utilization, GPU memory (exact MB used and free; turns orange at 90% and red at 95%), temperature, **CPU**, **system RAM** and **network** (receive and send). They help you tell whether a slow run is GPU-bound, data-loader-bound or waiting on a download or remote storage. Ranges of 1 minute, 10 minutes or 1 hour. The **All GPUs** view puts every GPU side by side.
 - **Processes:** which programs use the GPU, with dedicated and shared memory per process.
-- **Details:** architecture, CUDA cores, memory bus, PCIe link, BIOS, driver, CUDA version and compute capability, and DirectX/Vulkan/OpenCL support.
-- **Sensors:** every sensor with min/max/avg and history.
+- **Details:** architecture, CUDA cores, memory bus, PCIe link, **Resizable BAR status** (from the BAR1 size, as in `nvidia-smi -q`), BIOS, driver, CUDA version and compute capability, and DirectX/Vulkan/OpenCL support.
+- **Sensors:** every sensor with min/max/avg and history, including **VRAM temperature** on GPUs that report it (data-center and some workstation cards; the same value as `nvidia-smi --query-gpu=temperature.memory`).
 - **Logging in nvidia-smi CSV format,** so existing parsing scripts work. A run summary is saved next to each log.
 - **Mini mode:** an always-on-top mini window, a tray icon with live values, and alerts for temperature, memory and spill.
 - **Languages:** English, 简体中文, 繁體中文, 日本語, 한국어, Español, Français, Deutsch (automatic from the Windows language, or choose in Settings).

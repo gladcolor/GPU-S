@@ -502,12 +502,16 @@ namespace GpuS
                 netText == "–" ? "" : netText, Theme.Muted, rx == null ? "" : Units.Rate(netMax, null), span, rx, netMax, null, Theme.NetColor, tx);
 
             // Stats: 4 columns x 2 rows (GPU first row, system second row).
-            Sensor fan = Find("Fan Speed");
-            string tempLabel = fan != null && fan.Count > 0 ? Lang.L("Temperature") + "  ·  " + Lang.L("Fan") + " " + fan.Value.ToString("0") + "%" : Lang.L("Temperature");
+            Sensor fan = Find("Fan Speed"), memTemp = Find("Memory Temperature");
+            // With VRAM temperature (data-center / some workstation GPUs): label "GPU / VRAM", value "57 / 82 °C".
+            bool hasMemTemp = memTemp != null && memTemp.Count > 0 && temp != null && temp.Count > 0;
+            string tempLabel = hasMemTemp ? "GPU / " + Lang.L("VRAM") : Lang.L("Temperature");
+            string tempValue = hasMemTemp ? string.Format("{0:0} / {1:0} °C", temp.Value, memTemp.Value) : Val(temp);
+            if (fan != null && fan.Count > 0) tempLabel += "  ·  " + Lang.L("Fan") + " " + fan.Value.ToString("0") + "%";
             string[] labels = { Lang.L("Utilization"), Lang.L("GPU memory"), tempLabel, Lang.L("Power"), "CPU", Lang.L("System RAM"), Lang.L("Network"), Lang.L("GPU clock") };
             string[] values =
             {
-                Val(load), memText, Val(temp), Val(Find("Board Power Draw")),
+                Val(load), memText, tempValue, Val(Find("Board Power Draw")),
                 cpu != null && cpu.Count > 0 ? cpu.Value.ToString("0") + " %" : "–", ramText, netText, Val(Find("GPU Clock")),
             };
             int colW = stats.Width / 4;

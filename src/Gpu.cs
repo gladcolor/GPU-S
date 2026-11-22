@@ -26,6 +26,8 @@ namespace GpuS
         // NVIDIA / NVML
         public IntPtr Nvml;
         public string NvDriverVersion, CudaVersion, BiosVersion, Architecture, ComputeCapability, PciBusId;
+        public ulong Bar1Total;        // NVML BAR1 aperture (Resizable BAR on when it is larger than 256 MB)
+        public bool HasMemoryTemp;     // NVML reports VRAM temperature for this GPU
         public uint MemoryBusWidth, Shaders, MaxGpuClock, MaxMemClock, MaxVideoClock, PowerLimitW;
 
         public bool HasNvml { get { return Nvml != IntPtr.Zero; } }
@@ -210,6 +212,9 @@ namespace GpuS
                 if (Nvml.MaxClock(h, Nvml.CLOCK_MEM, out v)) g.MaxMemClock = v;
                 if (Nvml.MaxClock(h, Nvml.CLOCK_VIDEO, out v)) g.MaxVideoClock = v;
                 if (Nvml.PowerLimit(h, out v)) g.PowerLimitW = v / 1000;
+                Nvml.Bar1Total(h, out g.Bar1Total);
+                double mt;
+                g.HasMemoryTemp = Nvml.MemoryTemperature(h, out mt);
                 if (g.PcieMaxGen == 0)
                 {
                     Nvml.PcieMaxGen(h, out g.PcieMaxGen);

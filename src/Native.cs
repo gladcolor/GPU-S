@@ -380,10 +380,64 @@ namespace GpuS
     [StructLayout(LayoutKind.Sequential)]
     internal struct NvmlMemoryV2 { public uint Version; public ulong Total; public ulong Reserved; public ulong Free; public ulong Used; }
 
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct NvmlBar1 { public ulong Total, Free, Used; }
+
+    // nvmlFieldValue_t (40 bytes): id, scope, timestamp, latency, value type, per-field return code, 8-byte value union.
+    [StructLayout(LayoutKind.Explicit, Size = 40)]
+    internal struct NvmlFieldValue
+    {
+        [FieldOffset(0)] public uint FieldId;
+        [FieldOffset(4)] public uint ScopeId;
+        [FieldOffset(8)] public long Timestamp;
+        [FieldOffset(16)] public long LatencyUs;
+        [FieldOffset(24)] public int ValueType;     // 0 double, 1 uint, 2 ulong, 3 ulonglong, 4 longlong, 5 int
+        [FieldOffset(28)] public int Return;
+        [FieldOffset(32)] public double D;
+        [FieldOffset(32)] public uint UI;
+        [FieldOffset(32)] public int I;
+        [FieldOffset(32)] public long LL;
+    }
+
     internal static class Nvml
     {
         private const string Dll = "nvml.dll";
         public const int CLOCK_GRAPHICS = 0, CLOCK_SM = 1, CLOCK_MEM = 2, CLOCK_VIDEO = 3;
+        private const uint FI_DEV_MEMORY_TEMP = 82;
+
+        [DllImport(Dll)] private static extern int nvmlDeviceGetBAR1MemoryInfo(IntPtr device, out NvmlBar1 bar1);
+        [DllImport(Dll)] private static extern int nvmlDeviceGetFieldValues(IntPtr device, int count, [In, Out] NvmlFieldValue[] values);
+
+        // BAR1 aperture size. 256 MB = Resizable BAR off; about the VRAM size (rounded up to a power of two) = on.
+        public static bool Bar1Total(IntPtr d, out ulong bytes)
+        {
+            NvmlBar1 b;
+            try { bool ok = nvmlDeviceGetBAR1MemoryInfo(d, out b) == 0; bytes = ok ? b.Total : 0; return ok; }
+            catch (EntryPointNotFoundException) { bytes = 0; return false; }
+        }
+
+        // Memory (VRAM) temperature. Reported by data-center and some workstation GPUs; others return "not supported",
+        // exactly like nvidia-smi's temperature.memory = N/A.
+        private static readonly NvmlFieldValue[] tempField = new NvmlFieldValue[1];
+        public static bool MemoryTemperature(IntPtr d, out double celsius)
+        {
+            celsius = 0;
+            try
+            {
+                tempField[0] = new NvmlFieldValue { FieldId = FI_DEV_MEMORY_TEMP };
+                if (nvmlDeviceGetFieldValues(d, 1, tempField) != 0 || tempField[0].Return != 0) return false;
+                NvmlFieldValue f = tempField[0];
+                switch (f.ValueType)
+                {
+                    case 0: celsius = f.D; break;
+                    case 1: celsius = f.UI; break;
+                    case 5: celsius = f.I; break;
+                    default: celsius = f.LL; break;
+                }
+                return celsius > 0 && celsius < 200;
+            }
+            catch (EntryPointNotFoundException) { return false; }
+        }
 
         [DllImport(Dll)] private static extern int nvmlInit_v2();
         [DllImport(Dll)] public static extern int nvmlDeviceGetCount_v2(out uint count);
