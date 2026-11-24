@@ -2,6 +2,7 @@
 
 **One ~195 KB file. No installation. No admin rights. Free, no ads, no tracking.**
 Readings match `nvidia-smi`, and the interface is available in 8 languages.
+The **S** stands for **simple**.
 
 ![Monitor](docs/monitor.png)
 
