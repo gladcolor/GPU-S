@@ -483,8 +483,10 @@ namespace GpuS
             Sensor rx = System == null ? null : System.Find("Net Receive");
             Sensor tx = System == null ? null : System.Find("Net Send");
             int gap = pad, w4 = (area.Width - gap * 3) / 4, y3 = area.Y + h1 + h2;
+            // Temperature: GPU = filled area, hot spot (if reported) = dashed line.
+            Sensor hot = Find("Hot Spot Temperature");
             DrawPanel(g, new Rectangle(area.X, y3, w4, h3), Lang.L("Temperature"), tNow, Theme.Muted, "100 °C", span, temp, 100,
-                temp == null ? Lang.L("Not available (NVIDIA only)") : null, Theme.Accent);
+                temp == null ? Lang.L("Not available (NVIDIA only)") : null, Theme.Accent, hot, "GPU", Lang.L("Hot spot"));
             string cpuNow = cpu != null && cpu.Count > 0 ? cpu.Value.ToString("0") + "%" : "";
             DrawPanel(g, new Rectangle(area.X + w4 + gap, y3, w4, h3), "CPU", cpuNow, Theme.Muted, "100%", span, cpu, 100, null, Theme.CpuColor);
             string ramNow = "", ramText = "–";
@@ -499,16 +501,28 @@ namespace GpuS
             string netText = rx != null && rx.Count > 0 && tx != null ? Units.RatePair(rx.Value, tx.Value) : "–";
             double netMax = Units.NiceScale(Math.Max(Theme.WindowMax(rx, WindowSamples), Theme.WindowMax(tx, WindowSamples)));
             DrawPanel(g, new Rectangle(area.X + (w4 + gap) * 3, y3, area.Width - (w4 + gap) * 3, h3), Lang.L("Network"),
-                netText == "–" ? "" : netText, Theme.Muted, rx == null ? "" : Units.Rate(netMax, null), span, rx, netMax, null, Theme.NetColor, tx);
+                netText == "–" ? "" : netText, Theme.Muted, rx == null ? "" : Units.Rate(netMax, null), span, rx, netMax, null, Theme.NetColor, tx, "↓", "↑");
 
             // Stats: 4 columns x 2 rows (GPU first row, system second row).
-            Sensor fan = Find("Fan Speed"), memTemp = Find("Memory Temperature");
-            // With VRAM temperature (data-center / some workstation GPUs): label "GPU / VRAM", value "57 / 82 °C".
-            bool hasMemTemp = memTemp != null && memTemp.Count > 0 && temp != null && temp.Count > 0;
-            string tempLabel = hasMemTemp ? "GPU / " + Lang.L("VRAM") : Lang.L("Temperature");
-            string tempValue = hasMemTemp ? string.Format("{0:0} / {1:0} °C", temp.Value, memTemp.Value) : Val(temp);
-            if (fan != null && fan.Count > 0) tempLabel += "  ·  " + Lang.L("Fan") + " " + fan.Value.ToString("0") + "%";
-            string[] labels = { Lang.L("Utilization"), Lang.L("GPU memory"), tempLabel, Lang.L("Power"), "CPU", Lang.L("System RAM"), Lang.L("Network"), Lang.L("GPU clock") };
+            // Temperature cell: "GPU / Hot spot / VRAM" with "75 / 84 / 80 °C" for whatever this GPU reports.
+            string tempLabel = Lang.L("Temperature"), tempValue = Val(temp);
+            if (temp != null && temp.Count > 0)
+            {
+                var names = new List<string> { "GPU" };
+                var vals = new List<string> { temp.Value.ToString("0") };
+                if (hot != null && hot.Count > 0) { names.Add(Lang.L("Hot spot")); vals.Add(hot.Value.ToString("0")); }
+                Sensor vram = Find("Memory Junction Temperature") ?? Find("Memory Temperature");
+                if (vram != null && vram.Count > 0) { names.Add(Lang.L("VRAM")); vals.Add(vram.Value.ToString("0")); }
+                if (names.Count > 1)
+                {
+                    tempLabel = string.Join(" / ", names.ToArray());
+                    tempValue = string.Join(" / ", vals.ToArray()) + " °C";
+                }
+            }
+            // Power cell label carries the fan: RPM when the driver reports it, else percent.
+            string powerLabel = Lang.L("Power"), fanText = FanText();
+            if (fanText != null) powerLabel += "  ·  " + Lang.L("Fan") + " " + fanText;
+            string[] labels = { Lang.L("Utilization"), Lang.L("GPU memory"), tempLabel, powerLabel, "CPU", Lang.L("System RAM"), Lang.L("Network"), Lang.L("GPU clock") };
             string[] values =
             {
                 Val(load), memText, tempValue, Val(Find("Board Power Draw")),
@@ -521,6 +535,21 @@ namespace GpuS
                 Theme.Draw(g, labels[i], Theme.Small, new Rectangle(x, y, colW - 6, Theme.Small.Height), Theme.Muted, TextFormatFlags.Left);
                 Theme.Draw(g, values[i], Theme.Mid, new Rectangle(x, y + Theme.Small.Height + 1, colW - 6, Theme.Mid.Height), Theme.Text, TextFormatFlags.Left);
             }
+        }
+
+        // "2,236 RPM", "2,236 / 2,240 RPM" (several fans) or "48%" when RPM is not reported.
+        private string FanText()
+        {
+            var rpms = new List<string>();
+            for (int i = 1; i <= 8; i++)
+            {
+                Sensor r = Find("Fan " + i + " RPM");
+                if (r == null) break;
+                if (r.Count > 0) rpms.Add(r.Value.ToString("N0"));
+            }
+            if (rpms.Count > 0) return string.Join(" / ", rpms.ToArray()) + " RPM";
+            Sensor fan = Find("Fan Speed");
+            return fan != null && fan.Count > 0 ? fan.Value.ToString("0") + "%" : null;
         }
 
         // One card per GPU: utilization and memory graphs side by side.
@@ -567,13 +596,15 @@ namespace GpuS
         private int DrawPanel(Graphics g, Rectangle r, string title, string now, Color nowColor, string maxText, string span,
             Sensor s, double max, string empty, Color color)
         {
-            return DrawPanel(g, r, title, now, nowColor, maxText, span, s, max, empty, color, null);
+            return DrawPanel(g, r, title, now, nowColor, maxText, span, s, max, empty, color, null, null, null);
         }
 
-        // 'dashed' (network send) adds a dashed series and a small solid/dashed legend under the graph.
+        // 'dashed' (network send, hot spot) adds a dashed series and a small legend under the graph:
+        // ━ solidName  ╌ dashedName. Without data for the dashed series the footer shows the time span as usual.
         private int DrawPanel(Graphics g, Rectangle r, string title, string now, Color nowColor, string maxText, string span,
-            Sensor s, double max, string empty, Color color, Sensor dashed)
+            Sensor s, double max, string empty, Color color, Sensor dashed, string solidName, string dashedName)
         {
+            if (dashed != null && dashed.Count == 0) dashed = null;
             int th = Theme.Semi.Height + 4, bh = Theme.Small.Height + 6, U = Font.Height;
             if (r.Height < th + bh + 10) return r.X;
             int tw = TextRenderer.MeasureText(g, title, Theme.Semi, Size.Empty, TextFormatFlags.NoPadding).Width;
@@ -597,15 +628,17 @@ namespace GpuS
             int fy = gr.Bottom + 2, fh = Theme.Small.Height;
             if (dashed != null)
             {
-                // Legend: ━ ↓   ╌ ↑   (receive solid, send dashed)
                 int lx = r.X, ly = fy + fh / 2, seg = U;
+                Font lf = solidName.Length <= 1 ? Theme.Semi : Theme.Small; // arrows read better a little larger
+                int w1 = TextRenderer.MeasureText(g, solidName, lf, Size.Empty, TextFormatFlags.NoPadding).Width;
+                int w2 = TextRenderer.MeasureText(g, dashedName, lf, Size.Empty, TextFormatFlags.NoPadding).Width;
                 SmoothingMode old = g.SmoothingMode;
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 using (var p = new Pen(color, 2f)) g.DrawLine(p, lx, ly, lx + seg, ly);
-                Theme.Draw(g, "↓", Theme.Semi, new Rectangle(lx + seg + 3, fy - 1, U, fh + 2), Theme.Text, TextFormatFlags.Left);
-                lx += seg + U + 6;
+                Theme.Draw(g, solidName, lf, new Rectangle(lx + seg + 3, fy - 1, w1 + 4, fh + 2), Theme.Text, TextFormatFlags.Left);
+                lx += seg + 3 + w1 + U / 2;
                 using (var p = new Pen(Theme.Mix(color, Theme.Text, 0.35), 2f) { DashStyle = DashStyle.Dash }) g.DrawLine(p, lx, ly, lx + seg, ly);
-                Theme.Draw(g, "↑", Theme.Semi, new Rectangle(lx + seg + 3, fy - 1, U, fh + 2), Theme.Text, TextFormatFlags.Left);
+                Theme.Draw(g, dashedName, lf, new Rectangle(lx + seg + 3, fy - 1, Math.Max(0, Math.Min(w2 + 4, r.Right - U - lx - seg - 3)), fh + 2), Theme.Text, TextFormatFlags.Left);
                 g.SmoothingMode = old;
             }
             else

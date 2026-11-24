@@ -86,6 +86,15 @@ Enabled|已开启|已開啟|有効|사용|Activado|Activé|Aktiviert
 Disabled|未开启|未開啟|無効|사용 안 함|Desactivado|Désactivé|Deaktiviert
 VRAM|显存|顯示記憶體|VRAM|VRAM|VRAM|VRAM|VRAM
 Memory Temperature|显存温度|記憶體溫度|メモリ温度|메모리 온도|Temperatura de memoria|Température mémoire|Speichertemperatur
+Hot spot|热点|熱點|ホットスポット|핫스팟|Punto caliente|Point chaud|Hotspot
+Hot Spot Temperature|热点温度|熱點溫度|ホットスポット温度|핫스팟 온도|Temperatura del punto caliente|Température du point chaud|Hotspot-Temperatur
+Memory Junction Temperature|显存结温|記憶體接面溫度|メモリジャンクション温度|메모리 접합부 온도|Temperatura de unión de memoria|Température de jonction mémoire|Speicher-Sperrschichttemperatur
+Fan 1 RPM|风扇 1 转速|風扇 1 轉速|ファン 1 回転数|팬 1 RPM|Ventilador 1 RPM|Ventilateur 1 tr/min|Lüfter 1 U/min
+Fan 2 RPM|风扇 2 转速|風扇 2 轉速|ファン 2 回転数|팬 2 RPM|Ventilador 2 RPM|Ventilateur 2 tr/min|Lüfter 2 U/min
+Fan 3 RPM|风扇 3 转速|風扇 3 轉速|ファン 3 回転数|팬 3 RPM|Ventilador 3 RPM|Ventilateur 3 tr/min|Lüfter 3 U/min
+Fan 1 Speed|风扇 1 转速 (%)|風扇 1 轉速 (%)|ファン 1 速度|팬 1 속도|Ventilador 1|Ventilateur 1|Lüfter 1
+Fan 2 Speed|风扇 2 转速 (%)|風扇 2 轉速 (%)|ファン 2 速度|팬 2 속도|Ventilador 2|Ventilateur 2|Lüfter 2
+Fan 3 Speed|风扇 3 转速 (%)|風扇 3 轉速 (%)|ファン 3 速度|팬 3 속도|Ventilador 3|Ventilateur 3|Lüfter 3
 Network|网络|網路|ネットワーク|네트워크|Red|Réseau|Netzwerk
 RAM Used|已用内存|已用記憶體|使用メモリ (RAM)|사용 RAM|RAM usada|RAM utilisée|Belegter RAM
 Utilization|利用率|使用率|使用率|사용률|Uso|Utilisation|Auslastung

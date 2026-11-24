@@ -12,7 +12,7 @@ namespace GpuS
     internal sealed class MainForm : Form
     {
         public const string AppName = "GPU-S";
-        public const string AppVersion = "1.5";
+        public const string AppVersion = "1.6";
         public const string Author = "Ning, Huan (宁欢)";
         public const string AuthorEmail = "gladcolor@gmail.com";
         public static readonly Icon AppIcon = MakeIcon();

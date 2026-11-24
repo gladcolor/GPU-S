@@ -2,7 +2,8 @@
 //   DXGI / D3D12 / D3D11  - adapter enumeration, memory sizes, DirectX feature level
 //   cfgmgr32              - PnP device properties (driver, PCIe link, location)
 //   pdh                   - "GPU Engine" / "GPU Adapter Memory" performance counters (what Task Manager uses)
-//   nvml                  - NVIDIA Management Library (clocks, temperature, power, fan) - NVIDIA only
+//   nvml                  - NVIDIA Management Library (clocks, temperature, power, fans) - NVIDIA only
+//   nvapi64               - NVIDIA hot-spot / memory-junction temperatures (not in NVML)
 //   vulkan-1 / OpenCL     - API version probing
 // Written in C# 5 so it builds with the csc.exe that ships with Windows (.NET Framework 4.x).
 
@@ -399,6 +400,98 @@ namespace GpuS
         [FieldOffset(32)] public long LL;
     }
 
+    // NVAPI (nvapi64.dll, installed with the NVIDIA driver; works for standard users).
+    // Used only for what NVML does not expose: hot-spot and memory-junction temperatures, read with the
+    // undocumented NvAPI_GPU_ThermalGetSensors call that GPU-Z, HWiNFO and LibreHardwareMonitor also use.
+    // Any failure simply disables it; NVML stays the source for everything else.
+    internal static class NvApi
+    {
+        [DllImport("nvapi64.dll", EntryPoint = "nvapi_QueryInterface")] private static extern IntPtr QueryInterface(uint id);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int InitFn();
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int EnumFn([Out] IntPtr[] handles, out int count);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int UIntFn(IntPtr gpu, out uint value);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int BufFn(IntPtr gpu, IntPtr buffer);
+
+        // Thermal sensors: { uint version; uint mask; int reserved[8]; int temps[32] } (Q8.8 fixed point), version 2.
+        private const int ThermalSize = 168, TempsOffset = 40;
+        private static BufFn thermal;
+        private static IntPtr buffer;
+
+        private static T Fn<T>(uint id) where T : class
+        {
+            IntPtr p = QueryInterface(id);
+            return p == IntPtr.Zero ? null : (T)(object)Marshal.GetDelegateForFunctionPointer(p, typeof(T));
+        }
+
+        // Returns NVAPI GPU handles keyed by PCI bus number (to match NVML / PnP devices).
+        public static Dictionary<uint, IntPtr> Init()
+        {
+            var map = new Dictionary<uint, IntPtr>();
+            try
+            {
+                if (!Kernel32.LoadFromSystem32("nvapi64.dll")) return map;
+                InitFn init = Fn<InitFn>(0x0150E828);
+                EnumFn en = Fn<EnumFn>(0xE5AC921F);
+                UIntFn bus = Fn<UIntFn>(0x1BE0B8E5);
+                thermal = Fn<BufFn>(0x65FE3AAD);
+                if (init == null || en == null || bus == null || thermal == null || init() != 0) { thermal = null; return map; }
+                var handles = new IntPtr[64];
+                int count;
+                if (en(handles, out count) != 0) return map;
+                for (int i = 0; i < count && i < 64; i++)
+                {
+                    uint b;
+                    if (bus(handles[i], out b) == 0 && !map.ContainsKey(b)) map[b] = handles[i];
+                }
+                buffer = Marshal.AllocHGlobal(ThermalSize);
+            }
+            catch (Exception) { thermal = null; }
+            return map;
+        }
+
+        private static bool Query(IntPtr gpu, uint mask)
+        {
+            for (int i = 0; i < ThermalSize; i += 4) Marshal.WriteInt32(buffer, i, 0);
+            Marshal.WriteInt32(buffer, 0, ThermalSize | (2 << 16));
+            Marshal.WriteInt32(buffer, 4, (int)mask);
+            return thermal(gpu, buffer) == 0;
+        }
+
+        // Highest sensor bit the GPU accepts (the call fails once the mask asks for a sensor that does not exist).
+        public static uint ThermalMask(IntPtr gpu)
+        {
+            if (thermal == null || buffer == IntPtr.Zero) return 0;
+            try
+            {
+                uint mask = 0;
+                for (int bit = 0; bit < 32; bit++)
+                {
+                    if (!Query(gpu, 1u << bit)) break;
+                    mask |= 1u << bit;
+                }
+                return mask;
+            }
+            catch (Exception) { return 0; }
+        }
+
+        // Temperature of sensor 'index' (1 = hot spot, 9 = memory junction), or NaN.
+        public static bool Temperatures(IntPtr gpu, uint mask, double[] temps)
+        {
+            if (thermal == null || mask == 0) return false;
+            try
+            {
+                if (!Query(gpu, mask)) return false;
+                for (int i = 0; i < temps.Length && i < 32; i++)
+                {
+                    double t = Marshal.ReadInt32(buffer, TempsOffset + i * 4) / 256.0;
+                    temps[i] = (mask & (1u << i)) != 0 && t > 0 && t < 150 ? t : double.NaN;
+                }
+                return true;
+            }
+            catch (Exception) { thermal = null; return false; }
+        }
+    }
+
     internal static class Nvml
     {
         private const string Dll = "nvml.dll";
@@ -406,6 +499,39 @@ namespace GpuS
         private const uint FI_DEV_MEMORY_TEMP = 82;
 
         [DllImport(Dll)] private static extern int nvmlDeviceGetBAR1MemoryInfo(IntPtr device, out NvmlBar1 bar1);
+        [DllImport(Dll)] private static extern int nvmlDeviceGetNumFans(IntPtr device, out uint count);
+        [DllImport(Dll)] private static extern int nvmlDeviceGetFanSpeed_v2(IntPtr device, uint fan, out uint percent);
+        [StructLayout(LayoutKind.Sequential)] private struct FanSpeedInfo { public uint Version, Fan, Speed; }
+        [DllImport(Dll)] private static extern int nvmlDeviceGetFanSpeedRPM(IntPtr device, ref FanSpeedInfo info);
+        private static bool rpmMissing;
+
+        public static uint FanCount(IntPtr d)
+        {
+            uint n;
+            try { return nvmlDeviceGetNumFans(d, out n) == 0 && n < 16 ? n : 0; }
+            catch (EntryPointNotFoundException) { return 0; }
+        }
+
+        public static bool FanPercent(IntPtr d, uint fan, out uint pct)
+        {
+            try { return nvmlDeviceGetFanSpeed_v2(d, fan, out pct) == 0; }
+            catch (EntryPointNotFoundException) { pct = 0; return false; }
+        }
+
+        // Fan speed in RPM (NVML 12.5+ drivers; older ones lack the call).
+        public static bool FanRpm(IntPtr d, uint fan, out uint rpm)
+        {
+            rpm = 0;
+            if (rpmMissing) return false;
+            try
+            {
+                var f = new FanSpeedInfo { Version = 12 | (1u << 24), Fan = fan };
+                if (nvmlDeviceGetFanSpeedRPM(d, ref f) != 0) return false;
+                rpm = f.Speed;
+                return true;
+            }
+            catch (EntryPointNotFoundException) { rpmMissing = true; return false; }
+        }
         [DllImport(Dll)] private static extern int nvmlDeviceGetFieldValues(IntPtr device, int count, [In, Out] NvmlFieldValue[] values);
 
         // BAR1 aperture size. 256 MB = Resizable BAR off; about the VRAM size (rounded up to a power of two) = on.

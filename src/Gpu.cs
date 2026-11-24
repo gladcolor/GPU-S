@@ -28,6 +28,12 @@ namespace GpuS
         public string NvDriverVersion, CudaVersion, BiosVersion, Architecture, ComputeCapability, PciBusId;
         public ulong Bar1Total;        // NVML BAR1 aperture (Resizable BAR on when it is larger than 256 MB)
         public bool HasMemoryTemp;     // NVML reports VRAM temperature for this GPU
+        public uint FanCount;          // NVML fans
+        public bool HasFanRpm;
+        public IntPtr NvApi;           // NVAPI handle for hot-spot / memory-junction temperatures
+        public uint ThermalMask;       // NVAPI thermal sensors present (bit 1 hot spot, bit 9 memory junction)
+        public bool HasHotSpot { get { return NvApi != IntPtr.Zero && (ThermalMask & 0x2) != 0; } }
+        public bool HasMemJunction { get { return NvApi != IntPtr.Zero && (ThermalMask & 0x200) != 0; } }
         public uint MemoryBusWidth, Shaders, MaxGpuClock, MaxMemClock, MaxVideoClock, PowerLimitW;
 
         public bool HasNvml { get { return Nvml != IntPtr.Zero; } }
@@ -179,6 +185,8 @@ namespace GpuS
             g.PcieMaxWidth = CfgMgr.GetUInt32(g.PnpId, CfgMgr.PciMaxLinkWidth, 0);
         }
 
+        private static Dictionary<uint, IntPtr> nvapiGpus;
+
         private static void MatchNvml(List<GpuDevice> list)
         {
             if (!list.Exists(x => x.IsNvidia) || !Nvml.Init()) return;
@@ -215,6 +223,16 @@ namespace GpuS
                 Nvml.Bar1Total(h, out g.Bar1Total);
                 double mt;
                 g.HasMemoryTemp = Nvml.MemoryTemperature(h, out mt);
+                g.FanCount = Nvml.FanCount(h);
+                uint rpm;
+                g.HasFanRpm = g.FanCount > 0 && Nvml.FanRpm(h, 0, out rpm);
+                IntPtr nvapi;
+                if (nvapiGpus == null) nvapiGpus = NvApi.Init();
+                if (nvapiGpus.TryGetValue(pci.Bus, out nvapi))
+                {
+                    g.NvApi = nvapi;
+                    g.ThermalMask = NvApi.ThermalMask(nvapi);
+                }
                 if (g.PcieMaxGen == 0)
                 {
                     Nvml.PcieMaxGen(h, out g.PcieMaxGen);

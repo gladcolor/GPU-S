@@ -133,12 +133,19 @@ namespace GpuS
 
         public Sensor Get(string name, string unit, string format, double fixedMax)
         {
+            return Get(name, unit, format, fixedMax, null);
+        }
+
+        // 'after': list the new sensor right after that one (e.g. hot spot next to GPU temperature in the Sensors tab).
+        public Sensor Get(string name, string unit, string format, double fixedMax, string after)
+        {
             Sensor s;
             if (!byName.TryGetValue(name, out s))
             {
                 s = new Sensor(name, unit, format, fixedMax);
                 byName[name] = s;
-                List.Add(s);
+                int i = after == null ? -1 : List.FindLastIndex(x => x.Name == after || x.Name.StartsWith(after + " "));
+                if (i >= 0) List.Insert(i + 1, s); else List.Add(s);
             }
             return s;
         }
@@ -162,7 +169,7 @@ namespace GpuS
         private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
         public readonly DateTime Start = DateTime.Now;
         public long Samples, UtilN, PowerN, ThrottleKnown, PowerThrottled, ThermalThrottled, SpillSamples;
-        public double UtilSum, UtilMax, MemPeak, MemTotal, SharedPeak, TempMax = double.NaN, MemTempMax = double.NaN, PowerSum, PowerMax;
+        public double UtilSum, UtilMax, MemPeak, MemTotal, SharedPeak, TempMax = double.NaN, MemTempMax = double.NaN, HotMax = double.NaN, PowerSum, PowerMax;
         public long CpuN;
         public double CpuSum, CpuMax, RamPeak, RamTotal;
         public double RxStart = double.NaN, TxStart, RxEnd, TxEnd, RxPeak, TxPeak;
@@ -192,8 +199,10 @@ namespace GpuS
             if (x != null && x.Count > 0) SharedPeak = Math.Max(SharedPeak, x.Value);
             x = s.Find("GPU Temperature");
             if (x != null && x.Count > 0) TempMax = double.IsNaN(TempMax) ? x.Value : Math.Max(TempMax, x.Value);
-            x = s.Find("Memory Temperature");
+            x = s.Find("Memory Junction Temperature") ?? s.Find("Memory Temperature");
             if (x != null && x.Count > 0) MemTempMax = double.IsNaN(MemTempMax) ? x.Value : Math.Max(MemTempMax, x.Value);
+            x = s.Find("Hot Spot Temperature");
+            if (x != null && x.Count > 0) HotMax = double.IsNaN(HotMax) ? x.Value : Math.Max(HotMax, x.Value);
             x = s.Find("Board Power Draw");
             if (x != null && x.Count > 0) { PowerSum += x.Value; PowerN++; PowerMax = Math.Max(PowerMax, x.Value); }
             if (s.HasThrottle && (s.ThrottleRaw & 0x1) == 0) // ignore idle samples
@@ -234,6 +243,7 @@ namespace GpuS
                 : string.Format(Inv, "{0:N0} MiB", MemPeak));
             if (SharedPeak > 0) Row(sb, "Peak shared (system RAM) GPU memory", string.Format(Inv, "{0:N0} MiB", SharedPeak));
             if (!double.IsNaN(TempMax)) Row(sb, "Max temperature", string.Format(Inv, "{0:0} °C", TempMax));
+            if (!double.IsNaN(HotMax)) Row(sb, "Max hot-spot temperature", string.Format(Inv, "{0:0.0} °C", HotMax));
             if (!double.IsNaN(MemTempMax)) Row(sb, "Max memory (VRAM) temperature", string.Format(Inv, "{0:0} °C", MemTempMax));
             if (PowerN > 0) Row(sb, "Board power", string.Format(Inv, "avg {0:0.0} W, max {1:0.0} W", PowerSum / PowerN, PowerMax));
             if (ThrottleKnown > 0)
@@ -276,12 +286,32 @@ namespace GpuS
             {
                 SampleNvml(g.Nvml, s);
                 double mt;
-                if (g.HasMemoryTemp && Nvml.MemoryTemperature(g.Nvml, out mt)) s.Get("Memory Temperature", "°C", "0", 110).Push(mt);
+                if (g.HasMemoryTemp && Nvml.MemoryTemperature(g.Nvml, out mt)) s.Get("Memory Temperature", "°C", "0", 110, "GPU Temperature").Push(mt);
+                SampleFansAndHotSpot(g, s);
                 SampleShared(g, s);
             }
             else SamplePdh(g, s);
             UpdateSpill(g, s);
             s.Run.Add(s, g, System);
+        }
+
+        private readonly double[] nvTemps = new double[10];
+
+        // Per-fan speed (NVML) and hot-spot / memory-junction temperatures (NVAPI). Sensors appear only where supported.
+        private void SampleFansAndHotSpot(GpuDevice g, SensorSet s)
+        {
+            for (uint i = 0; i < g.FanCount; i++)
+            {
+                uint v;
+                string n = (i + 1).ToString();
+                if (g.FanCount > 1 && Nvml.FanPercent(g.Nvml, i, out v)) s.Get("Fan " + n + " Speed", "%", "0", 100, "Fan").Push(v);
+                if (g.HasFanRpm && Nvml.FanRpm(g.Nvml, i, out v)) s.Get("Fan " + n + " RPM", "RPM", "N0", 0, "Fan").Push(v);
+            }
+            if ((g.HasHotSpot || g.HasMemJunction) && NvApi.Temperatures(g.NvApi, g.ThermalMask, nvTemps))
+            {
+                if (g.HasHotSpot && !double.IsNaN(nvTemps[1])) s.Get("Hot Spot Temperature", "°C", "0.0", 100, "GPU Temperature").Push(nvTemps[1]);
+                if (g.HasMemJunction && !double.IsNaN(nvTemps[9])) s.Get("Memory Junction Temperature", "°C", "0.0", 110, "Hot Spot Temperature").Push(nvTemps[9]);
+            }
         }
 
         // ------------------------------------------------------------ CPU / system RAM
